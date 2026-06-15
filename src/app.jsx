@@ -756,8 +756,9 @@ function AddPanel({ custom, onAdd, onRemove }) {
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, flexWrap:"wrap" }}>
         <Seg items={[["girl","Girl"],["boy","Boy"],["both","Both"]]} value={g} onChange={setG} />
-        <button onClick={submit} className="lift" style={{ padding:"6px 16px", borderRadius:8, fontWeight:700, background:C.clay, color:"#fff" }}>Add</button>
+        <button onClick={submit} className="lift" style={{ padding:"6px 16px", borderRadius:8, fontWeight:700, background:C.sage, color:"#fff" }}>Add</button>
       </div>
+      <p style={{ fontSize:11, marginTop:8, color:C.muted }}>New names join voting right away and show “popularity &amp; meaning pending” until their SSA ranks and origin are filled in.</p>
       {custom.length > 0 && (
         <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${C.line}` }}>
           <div style={{ fontSize:12, marginBottom:6, color:C.muted }}>Names you’ve added</div>
@@ -969,7 +970,10 @@ function NameCard({ n, gender, accent, onPick, onVeto, picked, dim, starred, onS
       </div>
       <div style={{ minHeight:24, marginTop:8, fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</div>
       <div style={{ minHeight:36, marginTop:6, fontSize:12.5, color:C.muted, fontStyle:"italic", lineHeight:1.4 }}>{MEANING[n.id] ? cleanMeaning(MEANING[n.id]) : ""}</div>
-      <div style={{ minHeight:88, marginTop:6, display:"flex", justifyContent:"center" }}><PopLine id={n.id} gender={gender} /></div>
+      <div style={{ minHeight:88, marginTop:6, display:"flex", justifyContent:"center", alignItems:"center" }}>
+        {fp ? <PopLine id={n.id} gender={gender} />
+            : <span style={{ fontSize:11, fontStyle:"italic", color:C.muted }}>Popularity &amp; meaning pending</span>}
+      </div>
       <div style={{ minHeight:50, marginTop:8 }}>
         {popNicks.length > 0 && (
           <div>
@@ -1050,17 +1054,17 @@ function NoteBlock({ id, notes, profile, onSetNote }) {
     </div>
   );
 }
-function RankRow({ r, i, n, mode, gender, max, min, profile, cStar, aStar, onStar, notes, onSetNote }) {
+function RankRow({ r, rank, n, mode, gender, max, min, profile, cStar, aStar, onStar, notes, onSetNote }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
-  const accent = rankColor(n > 1 ? i / (n - 1) : 0);
+  const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
   const iStar = (profile === "claire" ? cStar : aStar).includes(r.n.id);
   const both = cStar.includes(r.n.id) && aStar.includes(r.n.id);
   const noteCount = notes[r.n.id] ? Object.keys(notes[r.n.id]).length : 0;
   return (
     <li style={{ borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${both ? C.ochre : C.line}` }}>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-        <span className="disp" style={{ width:24, textAlign:"center", fontSize:18, fontWeight:700, color: accent }}>{i + 1}</span>
+        <span className="disp" style={{ width:24, textAlign:"center", fontSize:18, fontWeight:700, color: accent }}>{rank}</span>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span className="disp" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{r.n.name}</span>
@@ -1145,6 +1149,10 @@ function GenderRankColumn({ gender, title, mode, data, profile, notes, onSetNote
     rows = names.map((n) => ({ n, score: R[n.id] ?? START }));
   }
   const live = rows.filter((r) => !isVetoed(r.n.id)).sort((x, y) => y.score - x.score);
+  // Competition ranking: equal scores share a rank, the next distinct score resumes
+  // at its position (e.g. 5, 5, 7) so a tie never makes one name look better.
+  const liveRanks = [];
+  live.forEach((r, i) => { liveRanks[i] = (i > 0 && Math.round(r.score) === Math.round(live[i - 1].score)) ? liveRanks[i - 1] : i + 1; });
   const dead = rows.filter((r) => isVetoed(r.n.id));
   const max = Math.max(...live.map((r) => r.score), START + 1);
   const min = Math.min(...live.map((r) => r.score), START - 1);
@@ -1198,7 +1206,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, notes, onSetNote
       </p>
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
-          <RankRow key={r.n.id} r={r} i={i} n={live.length} mode={mode} gender={gender} max={max} min={min}
+          <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} mode={mode} gender={gender} max={max} min={min}
             profile={profile} cStar={cStar} aStar={aStar} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
         ))}
       </ol>
@@ -1374,8 +1382,8 @@ function ByNameTrends({ pg, names, profileName }) {
         {ranked.map((n) => {
           const on = sel.includes(n.id); const ci = sel.indexOf(n.id);
           return (
-            <button key={n.id} onClick={() => toggle(n.id)} className="lift" style={{ fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600,
-              ...(on ? { background: LINE_COLORS[ci % LINE_COLORS.length], color:"#fff" } : { background:C.paper, color:C.muted, border:`1px solid ${C.line}` }) }}>{n.name}</button>
+            <button key={n.id} onClick={() => toggle(n.id)} className="lift" style={{ fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600, border:"1px solid transparent",
+              ...(on ? { background: LINE_COLORS[ci % LINE_COLORS.length], color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>{n.name}</button>
           );
         })}
       </div>
@@ -1405,8 +1413,8 @@ function CompareTrends({ data, gender, names }) {
       </div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
         {ranked.map((n) => (
-          <button key={n.id} onClick={() => setPick(n.id)} className="lift" style={{ fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600,
-            ...(n.id === id ? { background: C.sage, color:"#fff" } : { background:C.paper, color:C.muted, border:`1px solid ${C.line}` }) }}>{n.name}</button>
+          <button key={n.id} onClick={() => setPick(n.id)} className="lift" style={{ fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600, border:"1px solid transparent",
+            ...(n.id === id ? { background: C.sage, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>{n.name}</button>
         ))}
       </div>
     </div>
