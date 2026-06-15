@@ -59,6 +59,7 @@ function Ic({ n, s = 16, c = "currentColor", fill = "none" }) {
 /* -------------------------------- names ---------------------------------- */
 const U = (id, name, nicks = []) => ({ id, name, nicks, unisex: true });
 const UNISEX = [ U("lennon","Lennon",["Len","Lenny"]), U("sullivan","Sullivan",["Sully","Sunny"]), U("rory","Rory",["Ro","Rors"]), U("shae","Shae") ];
+const UNISEX_IDS = new Set(UNISEX.map((u) => u.id)); // popularity shown combined across boys + girls
 const NAMES = {
   boy: [
     { id:"finnegan", name:"Finnegan", nicks:["Finn"] },
@@ -989,13 +990,29 @@ function fmtRank(rank, approx, compact) {
 function PopLine({ id, gender, compact = false, noChart = false }) {
   const popMode = React.useContext(PopModeCtx);
   const [open, setOpen] = React.useState(false);
+  const uni = UNISEX_IDS.has(id);
   const fp = funcPop(id, gender);
   if (!fp) return null;
-  const tier = tierOf(fp.funcRank);
-  const main = popMode === "pct"
+  let tier = tierOf(fp.funcRank);
+  let sparkSeries = fp.series, sparkGender = gender, sparkApprox = fp.hasVar;
+  let main = popMode === "pct"
     ? (fmtPct(fp.funcPct) || (fp.funcRank == null ? "<0.01%" : "n/a"))
     : (fp.funcRank == null ? (compact ? "1000+" : "Outside top 1000")
         : (fp.hasVar ? "≈#" : "US #") + fp.funcRank);
+  if (uni) {
+    // Show both genders together so a unisex name reads the same in either round.
+    const g = funcPop(id, "girl"), b = funcPop(id, "boy");
+    const gr = g ? g.funcRank : null, br = b ? b.funcRank : null;
+    const best = gr == null ? br : (br == null ? gr : Math.min(gr, br));
+    tier = tierOf(best);
+    const rk = (r) => (r == null ? "1000+" : "#" + r);
+    main = popMode === "pct"
+      ? `♀ ${(g && fmtPct(g.funcPct)) || "<0.01%"} · ♂ ${(b && fmtPct(b.funcPct)) || "<0.01%"}`
+      : `♀ ${rk(gr)} · ♂ ${rk(br)}`;
+    sparkGender = (br != null && (gr == null || br <= gr)) ? "boy" : "girl"; // trend of the more-used gender
+    sparkSeries = displaySeries(id, sparkGender);
+    sparkApprox = false;
+  }
   const hasBreakdown = fp.hasVar || (compact && (fp.nicks.length > 0 || !!MEANING[id]));
   const cell = (r, p, approx) => popMode === "pct"
     ? (fmtPct(p) || (r == null ? "1000+" : "n/a"))
@@ -1015,7 +1032,7 @@ function PopLine({ id, gender, compact = false, noChart = false }) {
       </div>
       {!noChart && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", justifyContent: compact ? "flex-start" : "center", marginTop: 3 }}>
-          <Sparkline series={fp.series} w={compact ? 130 : 190} h={compact ? 34 : 44} color={C.sage} compact={compact} mode={popMode} gender={gender} approx={fp.hasVar} />
+          <Sparkline series={sparkSeries} w={compact ? 130 : 190} h={compact ? 34 : 44} color={C.sage} compact={compact} mode={popMode} gender={sparkGender} approx={sparkApprox} />
         </div>
       )}
       {open && hasBreakdown && (
