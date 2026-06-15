@@ -13,7 +13,7 @@ const C = {
   girlCard:"#EFD0D8", boyCard:"#CFDDEA",
 };
 // Color for a profile's own data (Claire = orangey-yellow, Andrew = sage green).
-const pColor = (p) => (p === "claire" ? C.claire : C.andrew);
+const pColor = (p) => (p === "claire" ? C.claire : p === "andrew" ? C.andrew : C.teal);
 // Per-gender helpers: accent color, soft background tint, and banner label.
 const gColor = (g) => (g === "boy" ? C.boy : C.girl);
 const gTint = (g) => (g === "boy" ? C.boyTint : C.girlTint);
@@ -80,11 +80,15 @@ const NAMES = {
     { id:"bridget", name:"Bridget", nicks:["Birdie","Jett"] },
     { id:"merritt", name:"Merritt", nicks:["Merry","Ritt"] },
     { id:"maira", name:"Maira", nicks:["Malley"] },
-    { id:"fiona", name:"Fiona", nicks:["Fio","Oona"] },
+    { id:"fiona", name:"Fiona", nicks:["Fio","Oona","Finn"] },
     ...UNISEX,
   ],
 };
 const PROFILES = { claire:"Claire", andrew:"Andrew" };
+const OWNERS = ["claire", "andrew"];   // only these two feed the official Rankings
+const OWNER_NAMES = { claire:"Claire", andrew:"Andrew" };
+const UNLOCK_VOTES = 10;               // votes a person must cast before Rankings + Trends unlock
+const isOwner = (p) => OWNERS.includes(p);
 const START = 1500;
 const BLOCK = 2; // matchups voted per gender before the Vote flow flips to the other
 const HISTORY_CAP = 200;
@@ -352,8 +356,15 @@ function assemble(map) {
   const custom = Array.isArray(map.custom) ? map.custom : [];
   const removed = Array.isArray(map.removed) ? map.removed : [];
   const notes = (map.notes && typeof map.notes === "object") ? map.notes : {};
-  const data = { custom, removed, notes, boy: {}, girl: {} };
-  ["boy", "girl"].forEach((g) => ["claire", "andrew"].forEach((p) => {
+  // Roster of voters: the two owners are always present; guests come from the
+  // saved "profiles" list (everyone is identified by their first name).
+  const saved = Array.isArray(map.profiles) ? map.profiles : [];
+  const roster = [], seen = new Set();
+  OWNERS.forEach((k) => { roster.push({ key: k, name: OWNER_NAMES[k] }); seen.add(k); });
+  saved.forEach((p) => { if (p && p.key && p.name && !seen.has(p.key)) { roster.push({ key: p.key, name: p.name }); seen.add(p.key); } });
+  const profiles = {}; roster.forEach((p) => { profiles[p.key] = p.name; });
+  const data = { custom, removed, notes, roster, profiles, boy: {}, girl: {} };
+  ["boy", "girl"].forEach((g) => roster.forEach(({ key: p }) => {
     const core = map[kCore(g, p)] || {};
     const hist = map[kHist(g, p)];
     const pg = {
@@ -402,7 +413,7 @@ const store = makeStore();
 /* ============================== component ================================ */
 function App() {
   const [data, setData] = useState(null);
-  const [profile, setProfile] = useState("claire");
+  const [profile, setProfile] = useState(() => { try { return localStorage.getItem("nameoff_me") || ""; } catch { return ""; } });
   const [voteGender, setVoteGender] = useState("girl"); // gender of the current Vote matchup
   const [blockCount, setBlockCount] = useState(0);       // matchups done in the current gender block
   const [view, setView] = useState("vote");
@@ -475,21 +486,25 @@ function App() {
     return { g, c };
   };
 
+  const known = !!(data && data.profiles && data.profiles[profile]); // identity chosen & registered
+
   useEffect(() => {
-    if (!data) return;
+    if (!data || !known) return;
     if (pendingPairRef.current) { setPair(pendingPairRef.current); pendingPairRef.current = null; setPicked(null); return; }
     setPair(pickPair(poolFor(data, voteGender), data[voteGender][profile], null));
     setPicked(null);
-  }, [data && 1, voteGender, profile]); // eslint-disable-line
+  }, [data && 1, voteGender, profile, known]); // eslint-disable-line
 
   // If the starting gender can't field a pair, flip once on load.
   useEffect(() => {
-    if (!data) return;
+    if (!data || !known) return;
     if (!votable(data, voteGender) && votable(data, otherG(voteGender))) { setVoteGender(otherG(voteGender)); setBlockCount(0); }
-  }, [data && 1]); // eslint-disable-line
+  }, [data && 1, known]); // eslint-disable-line
 
-  const pg = data ? data[voteGender][profile] : null;
+  const pg = known ? data[voteGender][profile] : null;
   const names = data ? namesFor(voteGender, data.custom, data.removed) : [];
+  const myVotes = known ? (data.boy[profile].votes + data.girl[profile].votes) : 0;
+  const unlocked = myVotes >= UNLOCK_VOTES; // Rankings + Trends gated until you've voted
 
   const vote = (winId, loseId) => {
     if (picked) return;
@@ -634,12 +649,32 @@ function App() {
     await load();
   };
 
+  // Identify yourself by first name (remembered on this device). Owners reuse
+  // their existing data; anyone new becomes a guest added to the roster.
+  const chooseMe = (rawName) => {
+    const name = (rawName || "").trim();
+    if (!name) return;
+    const key = slug(name);
+    const next = clone(dataRef.current);
+    if (!next.profiles[key]) {
+      next.roster = [...next.roster, { key, name }];
+      next.profiles = { ...next.profiles, [key]: name };
+      ["boy", "girl"].forEach((g) => { if (!next[g][key]) next[g][key] = emptyPG(g, next.custom); });
+      dataRef.current = next; setData(next);
+      save({ profiles: next.roster });
+    }
+    try { localStorage.setItem("nameoff_me", key); } catch {}
+    setProfile(key);
+  };
+  const switchMe = () => { try { localStorage.removeItem("nameoff_me"); } catch {} setProfile(""); };
+
   if (!data) return <div className="boot" style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:14 }}>Loading your names…</div>;
+  if (!known) return <WhoPanel roster={data.roster} onChoose={chooseMe} />;
 
   return (
     <PopModeCtx.Provider value={popMode}>
     <div className="wrap">
-      <Header profile={profile} setProfile={setProfile}
+      <Header me={data.profiles[profile]} myColor={pColor(profile)} onSwitch={switchMe}
         showAdd={showAdd} setShowAdd={setShowAdd}
         popMode={popMode} setPopMode={changePopMode} />
       {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom} />}
@@ -647,8 +682,12 @@ function App() {
 
       {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
         starred={pg.starred || []} onStar={(id) => toggleStar(voteGender, id)} onBack={goBack} canGoBack={canGoBack} profile={profile} />}
-      {view === "rankings" && <Rankings data={data} profile={profile} onUnveto={unveto} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} notes={data.notes} onSetNote={setNote} />}
-      {view === "trends" && <Trends data={data} profile={profile} />}
+      {view === "rankings" && (unlocked
+        ? <Rankings data={data} profile={profile} onUnveto={unveto} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} notes={data.notes} onSetNote={setNote} />
+        : <LockMsg myVotes={myVotes} />)}
+      {view === "trends" && (unlocked
+        ? <Trends data={data} profile={profile} />
+        : <LockMsg myVotes={myVotes} />)}
 
       {view === "vote" && (
         <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:12, color:C.muted }}>
@@ -668,6 +707,50 @@ function App() {
       )}
     </div>
     </PopModeCtx.Provider>
+  );
+}
+
+/* --------------------------- who's voting -------------------------------- */
+function WhoPanel({ roster, onChoose }) {
+  const [name, setName] = useState("");
+  return (
+    <div className="wrap" style={{ maxWidth:440 }}>
+      <h1 className="disp" style={{ margin:"24px 0 4px", letterSpacing:"0.06em", fontSize:32, fontWeight:800, textTransform:"uppercase", textAlign:"center" }}>
+        Name<span style={{ color:C.sage }}>·</span>Off
+      </h1>
+      <p style={{ fontSize:14, textAlign:"center", color:C.muted, margin:"0 0 20px" }}>What’s your first name? We’ll remember you on this device.</p>
+      <div style={{ display:"flex", gap:8 }}>
+        <input value={name} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onChoose(name)}
+          placeholder="First name" style={{ flex:1, padding:"10px 12px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}`, color:C.ink, fontSize:15 }} />
+        <button onClick={() => onChoose(name)} className="lift" style={{ padding:"10px 18px", borderRadius:10, fontWeight:700, background:C.sage, color:"#fff" }}>Start</button>
+      </div>
+      {roster.length > 0 && (
+        <div style={{ marginTop:18 }}>
+          <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:8 }}>Already voting</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {roster.map((p) => (
+              <button key={p.key} onClick={() => onChoose(p.name)} className="lift"
+                style={{ display:"flex", alignItems:"center", gap:7, padding:"6px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, fontSize:14, fontWeight:700, color:C.ink }}>
+                <span style={{ width:9, height:9, borderRadius:999, background:pColor(p.key) }} /> {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <p style={{ fontSize:12, color:C.muted, marginTop:20, lineHeight:1.5 }}>
+        You’ll vote on your own first. Once you’ve voted a bit, the Rankings and everyone’s Trends unlock. Only Claire &amp; Andrew’s votes set the official ranking; your votes show up in Trends.
+      </p>
+    </div>
+  );
+}
+function LockMsg({ myVotes }) {
+  const left = Math.max(0, UNLOCK_VOTES - myVotes);
+  return (
+    <div style={{ borderRadius:12, padding:"40px 20px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+      <div style={{ display:"flex", justifyContent:"center", marginBottom:10 }}><Ic n="heart" s={26} c={C.line} /></div>
+      <p style={{ fontSize:15, fontWeight:700, color:C.ink, margin:"0 0 4px" }}>Vote first to unlock this</p>
+      <p style={{ fontSize:13, margin:0 }}>Cast {left} more {left === 1 ? "matchup" : "matchups"} ({myVotes}/{UNLOCK_VOTES}) and Rankings &amp; Trends open up.</p>
+    </div>
   );
 }
 
@@ -691,14 +774,19 @@ function syncDot(sync) {
   if (sync.status === "saving" || sync.status === "syncing") return C.ochre;
   return C.sage;
 }
-function Header({ profile, setProfile, showAdd, setShowAdd, popMode, setPopMode }) {
+function Header({ me, myColor, onSwitch, showAdd, setShowAdd, popMode, setPopMode }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
         <h1 className="disp" style={{ margin:0, letterSpacing:"0.06em", fontSize:32, fontWeight:800, textTransform:"uppercase" }}>
           Name<span style={{ color:C.sage }}>·</span>Off
         </h1>
-        <Seg items={Object.entries(PROFILES)} value={profile} onChange={setProfile} active={pColor} />
+        <button onClick={onSwitch} className="lift" title="Not you? Switch voter"
+          style={{ display:"flex", alignItems:"center", gap:7, padding:"5px 12px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}` }}>
+          <span style={{ width:9, height:9, borderRadius:999, background:myColor }} />
+          <span style={{ fontSize:13, fontWeight:700, color:C.ink }}>{me}</span>
+          <span style={{ fontSize:11, fontWeight:600, color:C.muted }}>switch</span>
+        </button>
       </div>
       <div style={{ display:"flex", gap:8, marginTop:12, alignItems:"center", flexWrap:"wrap" }}>
         <div style={{ marginRight:"auto" }}>
@@ -1059,7 +1147,7 @@ function NoteBlock({ id, notes, profile, onSetNote }) {
     </div>
   );
 }
-function RankRow({ r, rank, n, mode, gender, max, min, profile, cStar, aStar, onStar, notes, onSetNote }) {
+function RankRow({ r, rank, n, mode, gender, max, min, profile, readOnly, cStar, aStar, onStar, notes, onSetNote }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
@@ -1090,19 +1178,24 @@ function RankRow({ r, rank, n, mode, gender, max, min, profile, cStar, aStar, on
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
           </div>
         </div>
-        <button onClick={() => onStar(r.n.id)} className="lift" aria-label="Favorite" title="Favorite" style={{ display:"flex", padding:2, color:C.ochre, opacity: iStar ? 1 : 0.4 }}>
-          <Ic n="star" s={18} c={C.ochre} fill={iStar ? C.ochre : "none"} />
-        </button>
+        {!readOnly && (
+          <button onClick={() => onStar(r.n.id)} className="lift" aria-label="Favorite" title="Favorite" style={{ display:"flex", padding:2, color:C.ochre, opacity: iStar ? 1 : 0.4 }}>
+            <Ic n="star" s={18} c={C.ochre} fill={iStar ? C.ochre : "none"} />
+          </button>
+        )}
       </div>
-      <button onClick={() => setShowNote((s) => !s)} className="lift" style={{ marginTop:6, fontSize:11, fontWeight:600, padding:"3px 9px", borderRadius:999, border:`1px solid ${C.line}`, background:"transparent", color: noteCount ? C.sage : C.muted }}>
-        ✎ {showNote ? "hide note" : (noteCount ? `notes · ${noteCount}` : "add note")}
-      </button>
-      {showNote && <NoteBlock id={r.n.id} notes={notes} profile={profile} onSetNote={onSetNote} />}
+      {!readOnly && (
+        <button onClick={() => setShowNote((s) => !s)} className="lift" style={{ marginTop:6, fontSize:11, fontWeight:600, padding:"3px 9px", borderRadius:999, border:`1px solid ${C.line}`, background:"transparent", color: noteCount ? C.sage : C.muted }}>
+          ✎ {showNote ? "hide note" : (noteCount ? `notes · ${noteCount}` : "add note")}
+        </button>
+      )}
+      {!readOnly && showNote && <NoteBlock id={r.n.id} notes={notes} profile={profile} onSetNote={onSetNote} />}
     </li>
   );
 }
 function Rankings({ data, profile, onUnveto, onStar, onRemove, onRestore, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
+  const readOnly = !isOwner(profile); // guests can view the couple's ranking but not edit it
   return (
     <div>
       <div style={{ display:"flex", gap:4, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
@@ -1112,14 +1205,14 @@ function Rankings({ data, profile, onUnveto, onStar, onRemove, onRestore, notes,
         ))}
       </div>
       <div className="twocol">
-        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
-        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
+        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
+        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
       </div>
-      <ManageNames data={data} onRemove={onRemove} onRestore={onRestore} />
+      {!readOnly && <ManageNames data={data} onRemove={onRemove} onRestore={onRestore} />}
     </div>
   );
 }
-function GenderRankColumn({ gender, title, mode, data, profile, notes, onSetNote, onUnveto, onStar }) {
+function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes, onSetNote, onUnveto, onStar }) {
   notes = notes || {};
   const names = namesFor(gender, data.custom, data.removed);
   const cR = data[gender].claire.ratings, aR = data[gender].andrew.ratings;
@@ -1212,7 +1305,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, notes, onSetNote
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} mode={mode} gender={gender} max={max} min={min}
-            profile={profile} cStar={cStar} aStar={aStar} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
+            profile={profile} readOnly={readOnly} cStar={cStar} aStar={aStar} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
         ))}
       </ol>
       {dead.length > 0 && (
@@ -1396,25 +1489,30 @@ function ByNameTrends({ pg, names, profileName }) {
   );
 }
 function CompareTrends({ data, gender, names }) {
-  const cD = data[gender].claire, aD = data[gender].andrew;
-  const ranked = [...names].sort((a, b) =>
-    ((cD.ratings[b.id] ?? START) + (aD.ratings[b.id] ?? START)) - ((cD.ratings[a.id] ?? START) + (aD.ratings[a.id] ?? START)));
+  const roster = data.roster;
+  const pgOf = (key) => data[gender][key];
+  const totalFor = (id) => roster.reduce((s, p) => s + (pgOf(p.key).ratings[id] ?? START), 0);
+  const ranked = [...names].sort((a, b) => totalFor(b.id) - totalFor(a.id));
   const [pick, setPick] = useState(() => (ranked[0] ? ranked[0].id : null));
-  if (!cD.votes && !aD.votes) return trendEmpty("Vote as both Claire and Andrew to compare your trends for a name.");
+  if (!roster.some((p) => pgOf(p.key).votes > 0)) return trendEmpty("Vote on some names to compare everyone’s trends here.");
   const id = pick && names.some((n) => n.id === pick) ? pick : ranked[0].id;
   const lineFor = (pg) => [{ x: 0, y: START }, ...pg.history.map((h) => ({ x: h.m, y: h.r[id] ?? START }))];
-  const lines = [];
-  if (cD.history.length) lines.push({ id: "claire", name: "Claire", color: C.claire, points: lineFor(cD) });
-  if (aD.history.length) lines.push({ id: "andrew", name: "Andrew", color: C.andrew, dash: true, points: lineFor(aD) });
+  // Owners get a solid line in their color; guests get a dashed line from the palette.
+  let gi = 0;
+  const lines = roster.filter((p) => pgOf(p.key).history.length).map((p) => {
+    const owner = isOwner(p.key);
+    return { id: p.key, name: p.name, color: owner ? pColor(p.key) : LINE_COLORS[gi++ % LINE_COLORS.length], dash: !owner, points: lineFor(pgOf(p.key)) };
+  });
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
-        Rating for <b style={{ color:C.ink }}>{findName(names, id).name}</b> · Claire (solid) vs Andrew (dashed). Pick a name below.
+        Rating for <b style={{ color:C.ink }}>{findName(names, id).name}</b> over each person’s votes. Pick a name below.
       </p>
       <TrendChart lines={lines} />
-      <div style={{ display:"flex", gap:14, marginTop:8, fontSize:11, color:C.muted }}>
-        <span style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px solid ${C.claire}` }} /> Claire</span>
-        <span style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px dashed ${C.andrew}` }} /> Andrew</span>
+      <div style={{ display:"flex", gap:14, marginTop:8, fontSize:11, color:C.muted, flexWrap:"wrap" }}>
+        {lines.map((l) => (
+          <span key={l.id} style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px ${l.dash ? "dashed" : "solid"} ${l.color}` }} /> {l.name}</span>
+        ))}
       </div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
         {ranked.map((n) => (
@@ -1433,10 +1531,10 @@ function Trends({ data, profile }) {
     <div>
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={setG} active={gColor} />
-        <Seg items={[["byName", "By name"], ["compare", "Compare us"]]} value={mode} onChange={setMode} />
+        <Seg items={[["byName", "By name"], ["compare", "Everyone"]]} value={mode} onChange={setMode} />
       </div>
       {mode === "byName"
-        ? <ByNameTrends pg={data[g][profile]} names={names} profileName={PROFILES[profile]} />
+        ? <ByNameTrends pg={data[g][profile]} names={names} profileName={data.profiles[profile] || "You"} />
         : <CompareTrends data={data} gender={g} names={names} />}
     </div>
   );
