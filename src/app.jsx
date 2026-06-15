@@ -725,39 +725,44 @@ function App() {
 function WhoPanel({ roster, onChoose, onDelete }) {
   const [name, setName] = useState("");
   return (
-    <div className="wrap" style={{ maxWidth:440 }}>
-      <h1 className="disp" style={{ margin:"24px 0 4px", letterSpacing:"0.06em", fontSize:32, fontWeight:800, textTransform:"uppercase", textAlign:"center" }}>
-        Name<span style={{ color:C.sage }}>·</span>Off
-      </h1>
-      <p style={{ fontSize:14, textAlign:"center", color:C.muted, margin:"0 0 20px" }}>What’s your first name? We’ll remember you on this device.</p>
-      <div style={{ display:"flex", gap:8 }}>
-        <input value={name} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onChoose(name)}
-          placeholder="First name" style={{ flex:1, padding:"10px 12px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}`, color:C.ink, fontSize:15 }} />
-        <button onClick={() => onChoose(name)} className="lift" style={{ padding:"10px 18px", borderRadius:10, fontWeight:700, background:C.sage, color:"#fff" }}>Start</button>
-      </div>
-      {roster.length > 0 && (
-        <div style={{ marginTop:18 }}>
-          <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:8 }}>Already voting</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-            {roster.map((p) => (
-              <span key={p.key} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 10px 6px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}` }}>
-                <button onClick={() => onChoose(p.name)} className="lift" style={{ display:"flex", alignItems:"center", gap:7, fontSize:14, fontWeight:700, color:C.ink }}>
-                  <span style={{ width:9, height:9, borderRadius:999, background:pColor(p.key) }} /> {p.name}
-                </button>
-                {onDelete && !OWNERS.includes(p.key) && (
-                  <button onClick={() => { if (window.confirm(`Remove ${p.name} and their votes? This can’t be undone.`)) onDelete(p.key); }}
-                    className="lift" aria-label={`Remove ${p.name}`} title="Remove this person" style={{ display:"flex", padding:2, color:C.muted }}>
-                    <Ic n="x" s={13} />
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ width:"100%", maxWidth:480, background:C.paper, border:`1px solid ${C.line}`, borderRadius:20, padding:"36px 30px" }}>
+        <h1 className="disp" style={{ margin:"0 0 6px", letterSpacing:"0.06em", fontSize:38, fontWeight:800, textTransform:"uppercase", textAlign:"center" }}>
+          Name<span style={{ color:C.sage }}>·</span>Off
+        </h1>
+        <p style={{ fontSize:15, textAlign:"center", color:C.muted, margin:"0 0 22px", lineHeight:1.45 }}>
+          {roster.length > 0 ? "Tap your name below, or type it if you’re new." : "What’s your first name? We’ll remember you on this device."}
+        </p>
+        {roster.length > 0 && (
+          <div style={{ marginBottom:22 }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:10 }}>Select your name</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:10 }}>
+              {roster.map((p) => (
+                <span key={p.key} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 12px 8px 16px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}` }}>
+                  <button onClick={() => onChoose(p.name)} className="lift" style={{ display:"flex", alignItems:"center", gap:8, fontSize:16, fontWeight:700, color:C.ink }}>
+                    <span style={{ width:10, height:10, borderRadius:999, background:pColor(p.key) }} /> {p.name}
                   </button>
-                )}
-              </span>
-            ))}
+                  {onDelete && !OWNERS.includes(p.key) && (
+                    <button onClick={() => { if (window.confirm(`Remove ${p.name} and their votes? This can’t be undone.`)) onDelete(p.key); }}
+                      className="lift" aria-label={`Remove ${p.name}`} title="Remove this person" style={{ display:"flex", padding:2, color:C.muted }}>
+                      <Ic n="x" s={14} />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
           </div>
+        )}
+        <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:10 }}>{roster.length > 0 ? "New here? Add yourself" : "Your first name"}</div>
+        <div style={{ display:"flex", gap:10 }}>
+          <input value={name} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onChoose(name)}
+            placeholder="First name" style={{ flex:1, padding:"12px 14px", borderRadius:12, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:16 }} />
+          <button onClick={() => onChoose(name)} className="lift" style={{ padding:"12px 22px", borderRadius:12, fontSize:16, fontWeight:700, background:C.sage, color:"#fff" }}>Start</button>
         </div>
-      )}
-      <p style={{ fontSize:12, color:C.muted, marginTop:20, lineHeight:1.5 }}>
-        You’ll vote on your own first. Once you’ve cast 10 votes, the Rankings and Trends tabs unlock. Only Claire &amp; Andrew’s votes set the official ranking; your votes show up in Trends.
-      </p>
+        <p style={{ fontSize:12.5, color:C.muted, marginTop:22, lineHeight:1.5 }}>
+          You’ll vote on your own first. Once you’ve cast 10 votes, the Rankings and Trends tabs unlock.
+        </p>
+      </div>
     </div>
   );
 }
@@ -811,9 +816,9 @@ function Header({ me, myColor, onSwitch, showAdd, setShowAdd, popMode, setPopMod
           <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
         </div>
         <button onClick={() => setShowAdd((s) => !s)} className="lift"
-          style={{ display:"flex", alignItems:"center", gap:4, padding:"6px 12px", borderRadius:999, fontSize:12, fontWeight:700,
+          style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:999, fontSize:15, fontWeight:700,
             ...(showAdd ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.sage, border:`1px solid ${C.line}` }) }}>
-          <Ic n={showAdd ? "x" : "plus"} s={13} /> {showAdd ? "Close" : "Add name"}
+          <Ic n={showAdd ? "x" : "plus"} s={16} /> {showAdd ? "Close" : "Add name"}
         </button>
       </div>
     </div>
@@ -1213,10 +1218,12 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
 }
 function Rankings({ data, profile, onUnveto, onStar, onRemove, onRestore, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
-  // "Combined" is the official Claire+Andrew ranking; you can also view any voter.
-  const options = [{ key: "combined", name: "Combined" }, ...data.roster];
+  // "Combined" is the official Claire+Andrew ranking; "Everyone" averages the family
+  // (guests only); you can also view any individual voter.
+  const guests = data.roster.filter((p) => !isOwner(p.key));
+  const options = [{ key: "combined", name: "Combined" }, ...(guests.length ? [{ key: "everyone", name: "Everyone" }] : []), ...data.roster];
   const readOnly = mode !== profile; // you can only edit your own ranking (stars/notes/veto)
-  const tabColor = (k) => (k === "combined" ? C.teal : pColor(k));
+  const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : pColor(k));
   return (
     <div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
@@ -1242,9 +1249,14 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const cRank = ranksOf(cR, names), aRank = ranksOf(aR, names);
   const splitGap = Math.ceil(names.length / 3);
   const isCombined = mode === "combined";
-  const sel = isCombined ? null : data[gender][mode];   // the single voter being viewed
+  const isEveryone = mode === "everyone";          // family aggregate (guests only, no owners)
+  const isPerson = !isCombined && !isEveryone;
+  const sel = isPerson ? data[gender][mode] : null; // the single voter being viewed
   const selStar = sel ? (sel.starred || []) : [];
-  const isVetoed = (id) => isCombined ? (cVeto.includes(id) || aVeto.includes(id)) : sel.vetoed.includes(id);
+  const guestKeys = data.roster.filter((p) => !isOwner(p.key)).map((p) => p.key);
+  const votedGuests = guestKeys.filter((k) => data[gender][k].votes > 0);
+  const everyoneScore = (id) => votedGuests.length ? votedGuests.reduce((s, k) => s + (data[gender][k].ratings[id] ?? START), 0) / votedGuests.length : START;
+  const isVetoed = (id) => isCombined ? (cVeto.includes(id) || aVeto.includes(id)) : isPerson ? sel.vetoed.includes(id) : false;
 
   const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
   const cVoted = cVotes > 0, aVoted = aVotes > 0;
@@ -1266,6 +1278,8 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       const soloR = cVoted ? cR : aR;
       rows = names.map((n) => ({ n, score: soloR[n.id] ?? START }));
     }
+  } else if (isEveryone) {
+    rows = names.map((n) => ({ n, score: everyoneScore(n.id) }));
   } else {
     rows = names.map((n) => ({ n, score: sel.ratings[n.id] ?? START }));
   }
@@ -1279,10 +1293,12 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const max = Math.max(...live.map((r) => r.score), START + 1);
   const min = Math.min(...live.map((r) => r.score), START - 1);
   // No real ranking to show until the relevant person/people have voted.
-  const noData = isCombined ? (!cVoted && !aVoted) : (sel.votes === 0);
+  const noData = isCombined ? (!cVoted && !aVoted) : isEveryone ? (votedGuests.length === 0) : (sel.votes === 0);
   const emptyMsg = isCombined
     ? "Neither of you has voted yet. Head to the Vote tab to start ranking."
-    : `${data.profiles[mode]} hasn’t voted on the ${gender === "boy" ? "boys" : "girls"} yet.`;
+    : isEveryone
+      ? "No family votes yet (Claire and Andrew aren’t counted here)."
+      : `${data.profiles[mode]} hasn’t voted on the ${gender === "boy" ? "boys" : "girls"} yet.`;
   const vetoLabel = (id) => { if (!isCombined) return data.profiles[mode]; const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w.join(" & "); };
 
   // agreement / disagreement summary for the combined view
@@ -1324,7 +1340,9 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
           ? (combineBoth
               ? `Average of both ratings. Claire: ${cVotes} votes · Andrew: ${aVotes} votes. ★ both = you’ve both starred it.`
               : `Only ${cVoted ? "Claire" : "Andrew"} has voted so far. Showing their ratings alone; the combined ranking appears once you’ve both voted.`)
-          : `${data.profiles[mode]}’s ratings · ${sel.votes} votes cast.`}
+          : isEveryone
+            ? `Average of ${votedGuests.length} family member${votedGuests.length === 1 ? "" : "s"}’ ratings (Claire and Andrew not included).`
+            : `${data.profiles[mode]}’s ratings · ${sel.votes} votes cast.`}
       </p>
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
