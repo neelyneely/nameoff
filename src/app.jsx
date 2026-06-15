@@ -667,9 +667,20 @@ function App() {
     setProfile(key);
   };
   const switchMe = () => { try { localStorage.removeItem("nameoff_me"); } catch {} setProfile(""); };
+  // Remove a guest profile (owners can't be removed); clears their data everywhere.
+  const deleteProfile = (key) => {
+    if (isOwner(key)) return;
+    const next = clone(dataRef.current);
+    next.roster = next.roster.filter((p) => p.key !== key);
+    next.profiles = { ...next.profiles }; delete next.profiles[key];
+    ["boy", "girl"].forEach((g) => { delete next[g][key]; });
+    dataRef.current = next; setData(next);
+    save({ profiles: next.roster, [kCore("boy", key)]: null, [kHist("boy", key)]: null, [kCore("girl", key)]: null, [kHist("girl", key)]: null });
+    if (profile === key) switchMe();
+  };
 
   if (!data) return <div className="boot" style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:14 }}>Loading your names…</div>;
-  if (!known) return <WhoPanel roster={data.roster} onChoose={chooseMe} />;
+  if (!known) return <WhoPanel roster={data.roster} onChoose={chooseMe} onDelete={deleteProfile} />;
 
   return (
     <PopModeCtx.Provider value={popMode}>
@@ -711,7 +722,7 @@ function App() {
 }
 
 /* --------------------------- who's voting -------------------------------- */
-function WhoPanel({ roster, onChoose }) {
+function WhoPanel({ roster, onChoose, onDelete }) {
   const [name, setName] = useState("");
   return (
     <div className="wrap" style={{ maxWidth:440 }}>
@@ -729,10 +740,17 @@ function WhoPanel({ roster, onChoose }) {
           <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:8 }}>Already voting</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
             {roster.map((p) => (
-              <button key={p.key} onClick={() => onChoose(p.name)} className="lift"
-                style={{ display:"flex", alignItems:"center", gap:7, padding:"6px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, fontSize:14, fontWeight:700, color:C.ink }}>
-                <span style={{ width:9, height:9, borderRadius:999, background:pColor(p.key) }} /> {p.name}
-              </button>
+              <span key={p.key} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 10px 6px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}` }}>
+                <button onClick={() => onChoose(p.name)} className="lift" style={{ display:"flex", alignItems:"center", gap:7, fontSize:14, fontWeight:700, color:C.ink }}>
+                  <span style={{ width:9, height:9, borderRadius:999, background:pColor(p.key) }} /> {p.name}
+                </button>
+                {onDelete && !OWNERS.includes(p.key) && (
+                  <button onClick={() => { if (window.confirm(`Remove ${p.name} and their votes? This can’t be undone.`)) onDelete(p.key); }}
+                    className="lift" aria-label={`Remove ${p.name}`} title="Remove this person" style={{ display:"flex", padding:2, color:C.muted }}>
+                    <Ic n="x" s={13} />
+                  </button>
+                )}
+              </span>
             ))}
           </div>
         </div>
@@ -963,7 +981,7 @@ function fmtRank(rank, approx, compact) {
   if (rank == null) return compact ? "1000+" : "Outside top 1000";
   return (approx ? "≈#" : "#") + rank;
 }
-function PopLine({ id, gender, compact = false }) {
+function PopLine({ id, gender, compact = false, noChart = false }) {
   const popMode = React.useContext(PopModeCtx);
   const [open, setOpen] = React.useState(false);
   const fp = funcPop(id, gender);
@@ -990,9 +1008,11 @@ function PopLine({ id, gender, compact = false }) {
             style={{ fontSize: 9, fontWeight: 700, width: 15, height: 15, lineHeight: "13px", textAlign: "center", borderRadius: 999, border: `1px solid ${C.line}`, background: open ? C.line : "transparent", color: C.muted, cursor: "pointer", padding: 0 }}>i</button>
         )}
       </div>
-      <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", justifyContent: compact ? "flex-start" : "center", marginTop: 3 }}>
-        <Sparkline series={fp.series} w={compact ? 130 : 190} h={compact ? 34 : 44} color={C.sage} compact={compact} mode={popMode} gender={gender} approx={fp.hasVar} />
-      </div>
+      {!noChart && (
+        <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", justifyContent: compact ? "flex-start" : "center", marginTop: 3 }}>
+          <Sparkline series={fp.series} w={compact ? 130 : 190} h={compact ? 34 : 44} color={C.sage} compact={compact} mode={popMode} gender={gender} approx={fp.hasVar} />
+        </div>
+      )}
       {open && hasBreakdown && (
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 5, padding: "7px 9px", borderRadius: 10, background: `${C.sage}12`, border: `1px solid ${C.line}`, fontSize: 10.5, color: C.ink, lineHeight: 1.5 }}>
           {compact && MEANING[id] && (
@@ -1171,9 +1191,9 @@ function RankRow({ r, rank, n, mode, gender, max, min, profile, readOnly, cStar,
                 <span style={{ color:C.andrew, fontWeight:700 }}>A#{r.a}</span>
               </span>
             )}
-            <PopLine id={r.n.id} gender={gender} compact />
+            <PopLine id={r.n.id} gender={gender} compact noChart />
           </div>
-          {r.n.nicks.length > 0 && <div style={{ fontSize:12, color:C.muted }}>{r.n.nicks.join(" · ")}</div>}
+          <div style={{ fontSize:12, color:C.muted, minHeight:16 }}>{r.n.nicks.length > 0 ? r.n.nicks.join(" · ") : ""}</div>
           <div style={{ height:6, borderRadius:999, marginTop:6, background:C.line }}>
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
           </div>
@@ -1246,7 +1266,8 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
     const R = mode === "claire" ? cR : aR;
     rows = names.map((n) => ({ n, score: R[n.id] ?? START }));
   }
-  const live = rows.filter((r) => !isVetoed(r.n.id)).sort((x, y) => y.score - x.score);
+  // Sort by score; names that tie (same rounded score) fall back to alphabetical.
+  const live = rows.filter((r) => !isVetoed(r.n.id)).sort((x, y) => (Math.round(y.score) - Math.round(x.score)) || x.n.name.localeCompare(y.n.name));
   // Competition ranking: equal scores share a rank, the next distinct score resumes
   // at its position (e.g. 5, 5, 7) so a tie never makes one name look better.
   const liveRanks = [];
