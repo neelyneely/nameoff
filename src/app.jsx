@@ -756,7 +756,7 @@ function WhoPanel({ roster, onChoose, onDelete }) {
         </div>
       )}
       <p style={{ fontSize:12, color:C.muted, marginTop:20, lineHeight:1.5 }}>
-        You’ll vote on your own first. Once you’ve voted a bit, the Rankings and everyone’s Trends unlock. Only Claire &amp; Andrew’s votes set the official ranking; your votes show up in Trends.
+        You’ll vote on your own first. Once you’ve cast 10 votes, the Rankings and Trends tabs unlock. Only Claire &amp; Andrew’s votes set the official ranking; your votes show up in Trends.
       </p>
     </div>
   );
@@ -1167,12 +1167,10 @@ function NoteBlock({ id, notes, profile, onSetNote }) {
     </div>
   );
 }
-function RankRow({ r, rank, n, mode, gender, max, min, profile, readOnly, cStar, aStar, onStar, notes, onSetNote }) {
+function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, starOn, both, onStar, notes, onSetNote }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
-  const iStar = (profile === "claire" ? cStar : aStar).includes(r.n.id);
-  const both = cStar.includes(r.n.id) && aStar.includes(r.n.id);
   const noteCount = notes[r.n.id] ? Object.keys(notes[r.n.id]).length : 0;
   return (
     <li style={{ borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${both ? C.ochre : C.line}` }}>
@@ -1183,7 +1181,7 @@ function RankRow({ r, rank, n, mode, gender, max, min, profile, readOnly, cStar,
             <span className="disp" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{r.n.name}</span>
             {r.n.custom && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added</span>}
             {both && <span style={{ fontSize:10, fontWeight:700, padding:"1px 6px", borderRadius:999, background:`${C.ochre}1A`, color:C.ochre }}>★ both</span>}
-            {mode === "combined" && r.c != null && (
+            {showCombo && r.c != null && (
               <span style={{ fontSize:10, fontWeight:600, padding:"1px 6px", borderRadius:999, background: r.split ? `${C.clay}1A` : C.line }}>
                 {r.split && <span style={{ color:C.clay, fontWeight:700 }}>split · </span>}
                 <span style={{ color:C.claire, fontWeight:700 }}>C#{r.c}</span>
@@ -1199,8 +1197,8 @@ function RankRow({ r, rank, n, mode, gender, max, min, profile, readOnly, cStar,
           </div>
         </div>
         {!readOnly && (
-          <button onClick={() => onStar(r.n.id)} className="lift" aria-label="Favorite" title="Favorite" style={{ display:"flex", padding:2, color:C.ochre, opacity: iStar ? 1 : 0.4 }}>
-            <Ic n="star" s={18} c={C.ochre} fill={iStar ? C.ochre : "none"} />
+          <button onClick={() => onStar(r.n.id)} className="lift" aria-label="Favorite" title="Favorite" style={{ display:"flex", padding:2, color:C.ochre, opacity: starOn ? 1 : 0.4 }}>
+            <Ic n="star" s={18} c={C.ochre} fill={starOn ? C.ochre : "none"} />
           </button>
         )}
       </div>
@@ -1215,20 +1213,23 @@ function RankRow({ r, rank, n, mode, gender, max, min, profile, readOnly, cStar,
 }
 function Rankings({ data, profile, onUnveto, onStar, onRemove, onRestore, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
-  const readOnly = !isOwner(profile); // guests can view the couple's ranking but not edit it
+  // "Combined" is the official Claire+Andrew ranking; you can also view any voter.
+  const options = [{ key: "combined", name: "Combined" }, ...data.roster];
+  const readOnly = mode !== profile; // you can only edit your own ranking (stars/notes/veto)
+  const tabColor = (k) => (k === "combined" ? C.teal : pColor(k));
   return (
     <div>
-      <div style={{ display:"flex", gap:4, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
-        {[["combined","Combined"],["claire","Claire"],["andrew","Andrew"]].map(([k, label]) => (
-          <button key={k} onClick={() => setMode(k)} className="lift" style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:14, fontWeight:700,
-            ...(mode === k ? { background: k === "claire" ? C.claire : k === "andrew" ? C.andrew : C.teal, color:"#fff" } : { color:C.muted }) }}>{label}</button>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
+        {options.map((o) => (
+          <button key={o.key} onClick={() => setMode(o.key)} className="lift" style={{ flex:"1 1 auto", padding:"7px 12px", borderRadius:8, fontSize:14, fontWeight:700,
+            ...(mode === o.key ? { background: tabColor(o.key), color:"#fff" } : { color:C.muted }) }}>{o.key === profile ? `${o.name} (you)` : o.name}</button>
         ))}
       </div>
       <div className="twocol">
         <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
         <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
       </div>
-      {!readOnly && <ManageNames data={data} onRemove={onRemove} onRestore={onRestore} />}
+      {isOwner(profile) && <ManageNames data={data} onRemove={onRemove} onRestore={onRestore} />}
     </div>
   );
 }
@@ -1240,7 +1241,10 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const cStar = data[gender].claire.starred || [], aStar = data[gender].andrew.starred || [];
   const cRank = ranksOf(cR, names), aRank = ranksOf(aR, names);
   const splitGap = Math.ceil(names.length / 3);
-  const isVetoed = (id) => mode === "combined" ? (cVeto.includes(id) || aVeto.includes(id)) : (mode === "claire" ? cVeto : aVeto).includes(id);
+  const isCombined = mode === "combined";
+  const sel = isCombined ? null : data[gender][mode];   // the single voter being viewed
+  const selStar = sel ? (sel.starred || []) : [];
+  const isVetoed = (id) => isCombined ? (cVeto.includes(id) || aVeto.includes(id)) : sel.vetoed.includes(id);
 
   const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
   const cVoted = cVotes > 0, aVoted = aVotes > 0;
@@ -1249,7 +1253,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const combineBoth = cVoted && aVoted;
 
   let rows;
-  if (mode === "combined") {
+  if (isCombined) {
     if (combineBoth) {
       rows = names.map((n) => {
         const avg = ((cR[n.id] ?? START) + (aR[n.id] ?? START)) / 2;
@@ -1263,8 +1267,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       rows = names.map((n) => ({ n, score: soloR[n.id] ?? START }));
     }
   } else {
-    const R = mode === "claire" ? cR : aR;
-    rows = names.map((n) => ({ n, score: R[n.id] ?? START }));
+    rows = names.map((n) => ({ n, score: sel.ratings[n.id] ?? START }));
   }
   // Sort by score; names that tie (same rounded score) fall back to alphabetical.
   const live = rows.filter((r) => !isVetoed(r.n.id)).sort((x, y) => (Math.round(y.score) - Math.round(x.score)) || x.n.name.localeCompare(y.n.name));
@@ -1276,11 +1279,11 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const max = Math.max(...live.map((r) => r.score), START + 1);
   const min = Math.min(...live.map((r) => r.score), START - 1);
   // No real ranking to show until the relevant person/people have voted.
-  const noData = mode === "combined" ? (!cVoted && !aVoted) : (mode === "claire" ? !cVoted : !aVoted);
-  const emptyMsg = mode === "combined"
+  const noData = isCombined ? (!cVoted && !aVoted) : (sel.votes === 0);
+  const emptyMsg = isCombined
     ? "Neither of you has voted yet. Head to the Vote tab to start ranking."
-    : `${mode === "claire" ? "Claire" : "Andrew"} hasn’t voted yet. Go to the Vote tab (as ${mode === "claire" ? "Claire" : "Andrew"}) to start ranking.`;
-  const vetoLabel = (id) => { const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w.join(" & "); };
+    : `${data.profiles[mode]} hasn’t voted on the ${gender === "boy" ? "boys" : "girls"} yet.`;
+  const vetoLabel = (id) => { if (!isCombined) return data.profiles[mode]; const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w.join(" & "); };
 
   // agreement / disagreement summary for the combined view
   const bothVoted = cVotes > 0 && aVotes > 0;
@@ -1300,7 +1303,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
           <p style={{ fontSize:14, margin:0 }}>{emptyMsg}</p>
         </div>
       ) : (<>
-      {mode === "combined" && bothVoted && (agree.length > 0 || clash.length > 0) && (
+      {isCombined && bothVoted && (agree.length > 0 || clash.length > 0) && (
         <div style={{ marginBottom:12, borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
           {agree.length > 0 && (
             <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom: clash.length ? 8 : 0 }}>
@@ -1317,16 +1320,16 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
         </div>
       )}
       <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>
-        {mode === "combined"
+        {isCombined
           ? (combineBoth
               ? `Average of both ratings. Claire: ${cVotes} votes · Andrew: ${aVotes} votes. ★ both = you’ve both starred it.`
               : `Only ${cVoted ? "Claire" : "Andrew"} has voted so far. Showing their ratings alone; the combined ranking appears once you’ve both voted.`)
-          : `${mode === "claire" ? "Claire" : "Andrew"}’s ratings · ${mode === "claire" ? cVotes : aVotes} votes cast.`}
+          : `${data.profiles[mode]}’s ratings · ${sel.votes} votes cast.`}
       </p>
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
-          <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} mode={mode} gender={gender} max={max} min={min}
-            profile={profile} readOnly={readOnly} cStar={cStar} aStar={aStar} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
+          <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
+            profile={profile} readOnly={readOnly} starOn={selStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
         ))}
       </ol>
       {dead.length > 0 && (
@@ -1341,13 +1344,13 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
                   <span className="disp" style={{ fontSize:16, fontWeight:700, color:C.muted, textDecoration:"line-through" }}>{r.n.name}</span>
                   <span style={{ fontSize:10, marginLeft:8, color:C.clay }}>vetoed by {vetoLabel(r.n.id)}</span>
                 </div>
-                {mode !== "combined" && (
+                {!readOnly && (
                   <button onClick={() => onUnveto(gender, mode, r.n.id)} className="lift" style={{ fontSize:12, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>restore</button>
                 )}
               </li>
             ))}
           </ul>
-          {mode === "combined" && <p style={{ fontSize:11, marginTop:8, color:C.muted }}>Switch to Claire or Andrew to restore a vetoed name.</p>}
+          {readOnly && <p style={{ fontSize:11, marginTop:8, color:C.muted }}>Switch to your own view to restore a vetoed name.</p>}
         </div>
       )}
       </>)}
