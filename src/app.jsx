@@ -4,8 +4,12 @@ const { useState, useEffect, useRef, useCallback } = React;
 /* ----------------------------- palette + type ---------------------------- */
 const C = {
   bg:"#E7DCC2", paper:"#F5EEDC", ink:"#33271A", muted:"#8C7B5F", line:"#D8CBA8",
-  teal:"#2F6B6B", ochre:"#C98A24", sage:"#5E7049", clay:"#BB5631",
+  teal:"#2E4756", ochre:"#C98A24", sage:"#5E7049", clay:"#BB5631",
+  // Per-person identity colors — used everywhere a person's data is shown.
+  claire:"#C98A24", andrew:"#4F6B43",
 };
+// Color for a profile's own data (Claire = orangey-yellow, Andrew = sage green).
+const pColor = (p) => (p === "claire" ? C.claire : C.andrew);
 const DISPLAY = "var(--disp)";
 const BODY = "var(--body)";
 
@@ -579,7 +583,7 @@ function App() {
 
       {view === "vote" && (
         <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:12, color:C.muted }}>
-          <span>{pg.votes} matchup{pg.votes === 1 ? "" : "s"} as {PROFILES[profile]} · {gender === "boy" ? "boys" : "girls"}</span>
+          <span>{pg.votes} matchup{pg.votes === 1 ? "" : "s"} as <b style={{ color:pColor(profile) }}>{PROFILES[profile]}</b> · {gender === "boy" ? "boys" : "girls"}</span>
           {confirmReset ? (
             <span style={{ display:"flex", alignItems:"center", gap:8 }}>
               Reset {PROFILES[profile]}’s {gender}?
@@ -600,12 +604,14 @@ function App() {
 
 /* ------------------------------- header ---------------------------------- */
 function Seg({ items, value, onChange, active = C.sage }) {
+  // `active` may be a color, or a function (key) => color for per-item tints.
+  const colorFor = (k) => (typeof active === "function" ? active(k) : active);
   return (
     <div style={{ display:"flex", gap:4, padding:4, borderRadius:999, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label]) => (
         <button key={k} onClick={() => onChange(k)} className="lift"
           style={{ padding:"4px 12px", borderRadius:999, fontSize:14, fontWeight:600,
-            ...(value === k ? { background: active, color:"#fff" } : { color: C.muted }) }}>{label}</button>
+            ...(value === k ? { background: colorFor(k), color:"#fff" } : { color: C.muted }) }}>{label}</button>
       ))}
     </div>
   );
@@ -623,7 +629,7 @@ function Header({ gender, setGender, profile, setProfile, showAdd, setShowAdd, s
         <h1 className="disp" style={{ margin:0, letterSpacing:"0.06em", fontSize:30, fontWeight:700, textTransform:"uppercase" }}>
           Name<span style={{ color:C.clay }}>·</span>Off
         </h1>
-        <Seg items={Object.entries(PROFILES)} value={profile} onChange={setProfile} />
+        <Seg items={Object.entries(PROFILES)} value={profile} onChange={setProfile} active={pColor} />
       </div>
       <p style={{ fontSize:12, marginTop:4, color:C.muted }}>Pick the name you love more. Every choice nudges the rankings.</p>
       <div style={{ display:"flex", gap:8, marginTop:12, alignItems:"center", flexWrap:"wrap" }}>
@@ -957,7 +963,7 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, on
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span className="disp" style={{ fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} accent={C.ochre} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} starred={starred.includes(b)} onStar={() => onStar(b)} />
+        <NameCard n={nb} gender={gender} accent={C.clay} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} starred={starred.includes(b)} onStar={() => onStar(b)} />
       </div>
       <div style={{ display:"flex", justifyContent:"center", marginTop:16 }}>
         <button onClick={onSkip} disabled={!!picked} className="lift" style={{ fontSize:12, padding:"6px 12px", borderRadius:999, color:C.muted, border:`1px solid ${C.line}`, background:C.paper }}>Can’t decide — skip</button>
@@ -976,7 +982,7 @@ function NoteBlock({ id, notes, profile, onSetNote }) {
   return (
     <div style={{ marginTop:8, padding:"8px 10px", borderRadius:10, background:`${C.sage}10`, border:`1px solid ${C.line}` }}>
       {theirs
-        ? <div style={{ fontSize:12, color:C.ink, marginBottom:6, lineHeight:1.4 }}><b style={{ color:C.muted }}>{PROFILES[otherKey]}:</b> {theirs}</div>
+        ? <div style={{ fontSize:12, color:C.ink, marginBottom:6, lineHeight:1.4 }}><b style={{ color:pColor(otherKey) }}>{PROFILES[otherKey]}:</b> {theirs}</div>
         : <div style={{ fontSize:11, color:C.muted, marginBottom:6, fontStyle:"italic" }}>{PROFILES[otherKey]} hasn’t added a note.</div>}
       <textarea value={val} onChange={(e) => setVal(e.target.value)} rows={2}
         placeholder={`${PROFILES[profile]}’s note (only you can edit this)`}
@@ -1005,8 +1011,11 @@ function RankRow({ r, i, mode, gender, max, min, profile, cStar, aStar, onStar, 
             {r.n.custom && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added</span>}
             {both && <span style={{ fontSize:10, fontWeight:700, padding:"1px 6px", borderRadius:999, background:`${C.ochre}1A`, color:C.ochre }}>★ both</span>}
             {mode === "combined" && r.c != null && (
-              <span style={{ fontSize:10, fontWeight:600, padding:"1px 6px", borderRadius:999, background: r.split ? `${C.clay}1A` : C.line, color: r.split ? C.clay : C.muted }}>
-                {r.split ? "split · " : ""}C#{r.c} · A#{r.a}
+              <span style={{ fontSize:10, fontWeight:600, padding:"1px 6px", borderRadius:999, background: r.split ? `${C.clay}1A` : C.line }}>
+                {r.split && <span style={{ color:C.clay, fontWeight:700 }}>split · </span>}
+                <span style={{ color:C.claire, fontWeight:700 }}>C#{r.c}</span>
+                <span style={{ color:C.muted }}> · </span>
+                <span style={{ color:C.andrew, fontWeight:700 }}>A#{r.a}</span>
               </span>
             )}
             <PopLine id={r.n.id} gender={gender} compact />
@@ -1107,7 +1116,7 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
           {clash.length > 0 && (
             <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
               <span style={{ fontSize:11, fontWeight:700, color:C.clay, textTransform:"uppercase", letterSpacing:"0.04em" }}>↔ You’re split on</span>
-              {clash.map((x) => <span key={x.n.id} style={{ fontSize:12, fontWeight:700, padding:"2px 9px", borderRadius:999, background:`${C.clay}1A`, color:C.clay }}>{x.n.name} <span style={{ fontWeight:600, opacity:0.75 }}>C#{x.c}·A#{x.a}</span></span>)}
+              {clash.map((x) => <span key={x.n.id} style={{ fontSize:12, fontWeight:700, padding:"2px 9px", borderRadius:999, background:`${C.clay}1A`, color:C.clay }}>{x.n.name} <span style={{ fontWeight:700 }}><span style={{ color:C.claire }}>C#{x.c}</span>·<span style={{ color:C.andrew }}>A#{x.a}</span></span></span>)}
             </div>
           )}
         </div>
@@ -1310,8 +1319,8 @@ function CompareTrends({ data, gender, names }) {
   const id = pick && names.some((n) => n.id === pick) ? pick : ranked[0].id;
   const lineFor = (pg) => [{ x: 0, y: START }, ...pg.history.map((h) => ({ x: h.m, y: h.r[id] ?? START }))];
   const lines = [];
-  if (cD.history.length) lines.push({ id: "claire", name: "Claire", color: C.teal, points: lineFor(cD) });
-  if (aD.history.length) lines.push({ id: "andrew", name: "Andrew", color: C.ochre, dash: true, points: lineFor(aD) });
+  if (cD.history.length) lines.push({ id: "claire", name: "Claire", color: C.claire, points: lineFor(cD) });
+  if (aD.history.length) lines.push({ id: "andrew", name: "Andrew", color: C.andrew, dash: true, points: lineFor(aD) });
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
@@ -1319,8 +1328,8 @@ function CompareTrends({ data, gender, names }) {
       </p>
       <TrendChart lines={lines} />
       <div style={{ display:"flex", gap:14, marginTop:8, fontSize:11, color:C.muted }}>
-        <span style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px solid ${C.teal}` }} /> Claire</span>
-        <span style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px dashed ${C.ochre}` }} /> Andrew</span>
+        <span style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px solid ${C.claire}` }} /> Claire</span>
+        <span style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px dashed ${C.andrew}` }} /> Andrew</span>
       </div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
         {ranked.map((n) => (
