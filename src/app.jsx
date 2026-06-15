@@ -1596,7 +1596,7 @@ function CompareTrends({ data, gender, names }) {
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
-        Rating for <b style={{ color:C.ink }}>{findName(names, id).name}</b> over each person’s votes. Pick a name below.
+How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> over time — you, Andrew, and family each get a line. Pick a name below.
       </p>
       <TrendChart lines={lines} />
       <div style={{ display:"flex", gap:14, marginTop:8, fontSize:11, color:C.muted, flexWrap:"wrap" }}>
@@ -1621,7 +1621,7 @@ function Trends({ data, profile }) {
     <div>
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={setG} active={gColor} />
-        <Seg items={[["byName", "By name"], ["compare", "By person"]]} value={mode} onChange={setMode} />
+        <Seg items={[["byName", "Compare names"], ["compare", "Compare people"]]} value={mode} onChange={setMode} />
       </div>
       {mode === "byName"
         ? <ByNameTrends pg={data[g][profile]} names={names} profileName={data.profiles[profile] || "You"} />
