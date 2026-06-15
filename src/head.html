@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Name·Off</title>
+<style>
+  :root{
+    --bg:#E7DCC2; --paper:#F5EEDC; --ink:#33271A; --muted:#8C7B5F; --line:#D8CBA8;
+    --teal:#2F6B6B; --ochre:#C98A24; --sage:#5E7049; --clay:#BB5631;
+    --disp:'Futura','Century Gothic','Avenir Next','Twentieth Century',sans-serif;
+    --body:'Avenir Next','Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;padding:0;}
+  input{font-family:inherit;}
+  button:focus-visible,[role=button]:focus-visible{outline:2px solid var(--clay);outline-offset:2px;}
+  input:focus-visible{outline:2px solid var(--sage);outline-offset:1px;}
+  .lift{transition:transform .18s ease, box-shadow .18s ease, opacity .2s ease;}
+  ol,ul{margin:0;padding:0;list-style:none;}
+  .wrap{max-width:780px;margin:0 auto;padding:18px 16px 96px;}
+  .cards{display:flex;gap:14px;align-items:stretch;}
+  .twocol{display:flex;gap:24px;}
+  .addgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .disp{font-family:var(--disp);}
+  #root>.boot{display:flex;min-height:100vh;align-items:center;justify-content:center;color:var(--muted);font-size:14px;}
+  @media (max-width:560px){ .twocol{flex-direction:column;} .addgrid{grid-template-columns:1fr;} .cards{flex-direction:column;} }
+  @media (prefers-reduced-motion: reduce){ .lift{transition:none;} }
+</style>
+</head>
+<body>

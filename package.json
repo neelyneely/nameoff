@@ -1,0 +1,19 @@
+{
+  "name": "nameoff",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Name·Off — head-to-head baby-name ranking app (single-file offline build)",
+  "scripts": {
+    "build": "node build.mjs",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=nameoff",
+    "preview": "npm run build && echo 'Open dist/index.html in a browser.'"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.24.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "wrangler": "^3.60.0"
+  }
+}
