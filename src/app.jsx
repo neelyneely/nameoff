@@ -9,12 +9,15 @@ const C = {
   claire:"#C9821A", andrew:"#4C6B3A",
   // Per-gender identity + soft background tints for the Vote banner / Rankings.
   girl:"#B5677B", boy:"#5B7493", girlTint:"#EFE0E2", boyTint:"#DFE6EC",
+  // Stronger pink/blue fills for the Vote cards so the round is obvious at a glance.
+  girlCard:"#EFD0D8", boyCard:"#CFDDEA",
 };
 // Color for a profile's own data (Claire = orangey-yellow, Andrew = sage green).
 const pColor = (p) => (p === "claire" ? C.claire : C.andrew);
 // Per-gender helpers: accent color, soft background tint, and banner label.
 const gColor = (g) => (g === "boy" ? C.boy : C.girl);
 const gTint = (g) => (g === "boy" ? C.boyTint : C.girlTint);
+const gCard = (g) => (g === "boy" ? C.boyCard : C.girlCard);
 const gLabel = (g) => (g === "boy" ? "BOYS" : "GIRLS");
 // Strip the wrapping quotes from meaning strings (e.g. Cornish · 'joyful' -> joyful).
 const cleanMeaning = (s) => (s ? s.replace(/['']/g, "") : s);
@@ -36,6 +39,7 @@ function Ic({ n, s = 16, c = "currentColor", fill = "none" }) {
     list:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
     reset:"M3 12a9 9 0 1 0 3-6.7L3 8M3 4v4h4",
     back:"M19 12H5M12 19l-7-7 7-7",
+    heart:"M12 21C12 21 3.5 14.5 3.5 8.8 3.5 5.9 5.6 4 8 4c1.7 0 3.2 1 4 2.5C12.8 5 14.3 4 16 4c2.4 0 4.5 1.9 4.5 4.8C20.5 14.5 12 21 12 21z",
     trophy:"M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4ZM5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3",
     swords:"M3 3l7 7M14 14l7 7M21 3l-7 7M10 14l-7 7",
     trend:"M3 17l6-6 4 4 8-8M21 7v6h-6",
@@ -779,7 +783,7 @@ function AddPanel({ custom, onAdd, onRemove }) {
 
 /* -------------------------------- tabs ----------------------------------- */
 function Tabs({ view, setView }) {
-  const items = [["vote","Vote","swords"],["rankings","Rankings","trophy"],["trends","Trends","trend"]];
+  const items = [["vote","Vote","heart"],["rankings","Rankings","trophy"],["trends","Trends","trend"]];
   return (
     <div style={{ display:"flex", gap:4, marginBottom:20, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label, icon]) => (
@@ -939,8 +943,9 @@ function PopLine({ id, gender, compact = false }) {
 }
 
 /* -------------------------------- vote ----------------------------------- */
-function NameCard({ n, gender, accent, onPick, onVeto, picked, dim, starred, onStar }) {
+function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar }) {
   const chosen = picked === n.id;
+  const accent = gColor(gender);     // pink for girls, blue for boys (follows the matchup)
   const popMode = React.useContext(PopModeCtx);
   const fp = funcPop(n.id, gender);
   const popNicks = (fp ? fp.nicks : []).filter((nk) => nk.rank != null || nk.pct != null);
@@ -949,8 +954,8 @@ function NameCard({ n, gender, accent, onPick, onVeto, picked, dim, starred, onS
       onClick={() => !picked && onPick()}
       onKeyDown={(e) => { if (!picked && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onPick(); } }}
       className="lift" style={{
-        flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", borderRadius:16, padding:"44px 16px 22px", textAlign:"center", position:"relative", background:C.paper,
-        border:`2px solid ${chosen ? accent : C.line}`, minHeight:180,
+        flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", borderRadius:16, padding:"44px 16px 22px", textAlign:"center", position:"relative", background:gCard(gender),
+        border:`2px solid ${chosen ? accent : "transparent"}`, minHeight:180,
         boxShadow: chosen ? `0 0 0 4px ${accent}22` : "0 2px 0 rgba(0,0,0,0.05)",
         opacity: dim ? 0.4 : 1, transform: chosen ? "translateY(-3px)" : "none", cursor: picked ? "default" : "pointer",
       }}>
@@ -977,7 +982,7 @@ function NameCard({ n, gender, accent, onPick, onVeto, picked, dim, starred, onS
       <div style={{ minHeight:50, marginTop:8 }}>
         {popNicks.length > 0 && (
           <div>
-            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", color:C.muted, marginBottom:5 }}>Goes by</div>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:5 }}>Nickname popularity</div>
             <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
               {popNicks.map((nk, i) => {
                 const fig = popMode === "pct" ? (fmtPct(nk.pct) || "") : (nk.rank == null ? "1000+" : (nk.approx ? "≈#" : "#") + nk.rank);
@@ -1015,11 +1020,11 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, on
     <div>
       {banner}
       <div className="cards">
-        <NameCard n={na} gender={gender} accent={C.teal} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} starred={starred.includes(a)} onStar={() => onStar(a)} />
+        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} starred={starred.includes(a)} onStar={() => onStar(a)} />
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span className="disp" style={{ fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} accent={C.sage} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} starred={starred.includes(b)} onStar={() => onStar(b)} />
+        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} starred={starred.includes(b)} onStar={() => onStar(b)} />
       </div>
       <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
         <button onClick={onBack} disabled={!canGoBack} className="lift" title="Revisit your last vote and change it"
