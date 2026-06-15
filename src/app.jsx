@@ -1218,12 +1218,11 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
 }
 function Rankings({ data, profile, onUnveto, onStar, onRemove, onRestore, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
-  // "Combined" is the official Claire+Andrew ranking; "Everyone" averages the family
-  // (guests only); you can also view any individual voter.
-  const guests = data.roster.filter((p) => !isOwner(p.key));
-  const options = [{ key: "combined", name: "Combined" }, ...(guests.length ? [{ key: "everyone", name: "Everyone" }] : []), ...data.roster];
-  const readOnly = mode !== profile; // you can only edit your own ranking (stars/notes/veto)
-  const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : pColor(k));
+  // Two rankings: the couple's combined (with agreement/disparity), and the family
+  // pool (everyone who isn't Claire or Andrew). No individual tabs.
+  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Fam" }];
+  const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage stars/notes on the couple's ranking only
+  const tabColor = (k) => (k === "combined" ? C.teal : C.sage);
   return (
     <div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
@@ -1253,6 +1252,9 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const isPerson = !isCombined && !isEveryone;
   const sel = isPerson ? data[gender][mode] : null; // the single voter being viewed
   const selStar = sel ? (sel.starred || []) : [];
+  // the current viewer's own stars/vetoes (for editing on the couple's ranking)
+  const myStar = data[gender][profile] ? (data[gender][profile].starred || []) : [];
+  const myVeto = isOwner(profile) ? (data[gender][profile].vetoed || []) : [];
   const guestKeys = data.roster.filter((p) => !isOwner(p.key)).map((p) => p.key);
   const votedGuests = guestKeys.filter((k) => data[gender][k].votes > 0);
   const everyoneScore = (id) => votedGuests.length ? votedGuests.reduce((s, k) => s + (data[gender][k].ratings[id] ?? START), 0) / votedGuests.length : START;
@@ -1347,7 +1349,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
-            profile={profile} readOnly={readOnly} starOn={selStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
+            profile={profile} readOnly={readOnly} starOn={myStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
         ))}
       </ol>
       {dead.length > 0 && (
@@ -1362,13 +1364,12 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
                   <span className="disp" style={{ fontSize:16, fontWeight:700, color:C.muted, textDecoration:"line-through" }}>{r.n.name}</span>
                   <span style={{ fontSize:10, marginLeft:8, color:C.clay }}>vetoed by {vetoLabel(r.n.id)}</span>
                 </div>
-                {!readOnly && (
-                  <button onClick={() => onUnveto(gender, mode, r.n.id)} className="lift" style={{ fontSize:12, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>restore</button>
+                {!readOnly && myVeto.includes(r.n.id) && (
+                  <button onClick={() => onUnveto(gender, profile, r.n.id)} className="lift" style={{ fontSize:12, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>restore</button>
                 )}
               </li>
             ))}
           </ul>
-          {readOnly && <p style={{ fontSize:11, marginTop:8, color:C.muted }}>Switch to your own view to restore a vetoed name.</p>}
         </div>
       )}
       </>)}
