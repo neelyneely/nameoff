@@ -1457,7 +1457,9 @@ function ManageNames({ data, onRemove, onRestore }) {
 
 /* ------------------------------- trends ---------------------------------- */
 const LINE_COLORS = ["#2E4756","#C9821A","#566B36","#B5677B","#5B7493","#A4663A","#7A5BA6","#3A6EA5"];
-function TrendChart({ lines, xUnit = "votes" }) {
+// Once the 8 theme colors are used, vary the stroke pattern to keep lines distinct.
+const DASHES = [null, "7 5", "1.5 4", "10 4 1.5 4"]; // solid, dashed, dotted, dash-dot
+function TrendChart({ lines, xUnit = "votes", emph = null }) {
   const W = 600, H = 240, padL = 14, padR = 12, padT = 12, padB = 26;
   const allPts = lines.flatMap((l) => l.points);
   if (!allPts.length) return null;
@@ -1493,11 +1495,15 @@ function TrendChart({ lines, xUnit = "votes" }) {
         <text x={padL} y={H - 6} fontSize="10" fill={C.muted}>0</text>
         <text x={W - padR} y={H - 6} fontSize="10" fill={C.muted} textAnchor="end">{maxX} {xUnit}</text>
         {hx != null && <line x1={X(hx)} x2={X(hx)} y1={padT} y2={H - padB} stroke={C.clay} strokeWidth="1" opacity="0.5" />}
-        {lines.map((l) => (
-          <polyline key={l.id} fill="none" stroke={l.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
-            strokeDasharray={l.dash ? "6 4" : undefined}
-            points={l.points.map((p) => `${X(p.x)},${Y(p.y)}`).join(" ")} />
-        ))}
+        {(emph ? [...lines.filter((l) => l.id !== emph), ...lines.filter((l) => l.id === emph)] : lines).map((l) => {
+          const isEmph = l.id === emph;
+          return (
+            <polyline key={l.id} fill="none" stroke={l.color} strokeWidth={isEmph ? 3.6 : 2}
+              opacity={emph && !isEmph ? 0.28 : 1} strokeLinejoin="round" strokeLinecap="round"
+              strokeDasharray={l.dash === true ? "6 4" : (l.dash || undefined)}
+              points={l.points.map((p) => `${X(p.x)},${Y(p.y)}`).join(" ")} />
+          );
+        })}
         {hx != null && lines.map((l) => {
           const v = valAt(l, hx); return v == null ? null : <circle key={l.id} cx={X(hx)} cy={Y(v)} r="3" fill={l.color} />;
         })}
@@ -1524,24 +1530,37 @@ const trendEmpty = (msg) => (
 );
 function ByNameTrends({ pg, names, profileName }) {
   const ranked = [...names].sort((a, b) => (pg.ratings[b.id] ?? START) - (pg.ratings[a.id] ?? START));
-  // Default to every name still in play (not vetoed) so all trend lines show.
-  const [sel, setSel] = useState(() => ranked.filter((n) => !(pg.vetoed || []).includes(n.id)).map((n) => n.id));
+  // Stable color + pattern per name (by its rank position): first 8 are solid theme
+  // colors, then the same colors with dashed / dotted / dash-dot strokes.
+  const styleFor = (i) => ({ color: LINE_COLORS[i % LINE_COLORS.length], dash: DASHES[Math.floor(i / LINE_COLORS.length) % DASHES.length] });
+  const styleOf = (id) => styleFor(Math.max(0, ranked.findIndex((n) => n.id === id)));
+  const [sel, setSel] = useState(() => ranked.slice(0, 5).map((n) => n.id)); // top 5 by default
+  const [emph, setEmph] = useState(null);
   if (!pg.history || pg.history.length < 2) return trendEmpty(`Cast a few votes as ${profileName} to start a trend line.`);
-  const lines = sel.map((id, i) => ({
-    id, name: findName(names, id).name, color: LINE_COLORS[i % LINE_COLORS.length],
-    points: [{ x: 0, y: START }, ...pg.history.map((h) => ({ x: h.m, y: h.r[id] ?? START }))],
-  }));
+  const lines = sel.map((id) => {
+    const st = styleOf(id);
+    return { id, name: findName(names, id).name, color: st.color, dash: st.dash,
+      points: [{ x: 0, y: START }, ...pg.history.map((h) => ({ x: h.m, y: h.r[id] ?? START }))] };
+  });
   const toggle = (id) => setSel((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const dashStyle = (d) => (d == null ? "solid" : d === "1.5 4" ? "dotted" : "dashed");
   return (
     <div>
-      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>{profileName}’s rating over {pg.votes} votes. Tap names to add or remove lines.</p>
-      <TrendChart lines={lines} />
+      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
+        {profileName}’s rating over {pg.votes} votes. Showing the top {Math.min(5, ranked.length)} by default — tap any name to add or remove it; hover a name to highlight its line.
+      </p>
+      <TrendChart lines={lines} emph={emph} />
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
         {ranked.map((n) => {
-          const on = sel.includes(n.id); const ci = sel.indexOf(n.id);
+          const on = sel.includes(n.id); const st = styleOf(n.id);
           return (
-            <button key={n.id} onClick={() => toggle(n.id)} className="lift" style={{ fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600, border:"1px solid transparent",
-              ...(on ? { background: LINE_COLORS[ci % LINE_COLORS.length], color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>{n.name}</button>
+            <button key={n.id} onClick={() => toggle(n.id)}
+              onMouseEnter={() => on && setEmph(n.id)} onMouseLeave={() => setEmph((e) => (e === n.id ? null : e))}
+              className="lift" style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600, border:"1px solid transparent",
+              ...(on ? { background: st.color, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>
+              {on && st.dash && <span style={{ width:14, height:0, borderTop:`2px ${dashStyle(st.dash)} #fff` }} />}
+              {n.name}
+            </button>
           );
         })}
       </div>
