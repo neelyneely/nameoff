@@ -1005,10 +1005,11 @@ function PopLine({ id, gender, compact = false, noChart = false }) {
     const gr = g ? g.funcRank : null, br = b ? b.funcRank : null;
     const best = gr == null ? br : (br == null ? gr : Math.min(gr, br));
     tier = tierOf(best);
-    const rk = (r) => (r == null ? "1000+" : "#" + r);
-    main = popMode === "pct"
-      ? `♀ ${(g && fmtPct(g.funcPct)) || "<0.01%"} · ♂ ${(b && fmtPct(b.funcPct)) || "<0.01%"}`
-      : `♀ ${rk(gr)} · ♂ ${rk(br)}`;
+    // Only show a gender that's actually ranked (e.g. Sullivan isn't a girls' name).
+    const segs = [];
+    if (gr != null) segs.push(`♀ ${popMode === "pct" ? (fmtPct(g.funcPct) || "<0.01%") : "#" + gr}`);
+    if (br != null) segs.push(`♂ ${popMode === "pct" ? (fmtPct(b.funcPct) || "<0.01%") : "#" + br}`);
+    main = segs.length ? segs.join(" · ") : (popMode === "pct" ? "<0.01%" : (compact ? "1000+" : "Outside top 1000"));
     sparkGender = (br != null && (gr == null || br <= gr)) ? "boy" : "girl"; // trend of the more-used gender
     sparkSeries = displaySeries(id, sparkGender);
     sparkApprox = false;
