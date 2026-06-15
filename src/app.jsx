@@ -1040,13 +1040,26 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
   const splitGap = Math.ceil(names.length / 3);
   const isVetoed = (id) => mode === "combined" ? (cVeto.includes(id) || aVeto.includes(id)) : (mode === "claire" ? cVeto : aVeto).includes(id);
 
+  const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
+  const cVoted = cVotes > 0, aVoted = aVotes > 0;
+  // A profile that hasn't voted sits at START for every name — that's not a real
+  // opinion, so don't blend it in. Only combine the two once BOTH have voted.
+  const combineBoth = cVoted && aVoted;
+
   let rows;
   if (mode === "combined") {
-    rows = names.map((n) => {
-      const avg = ((cR[n.id] ?? START) + (aR[n.id] ?? START)) / 2;
-      const split = Math.abs(cRank[n.id] - aRank[n.id]) >= splitGap;
-      return { n, score: avg, c: cRank[n.id], a: aRank[n.id], split };
-    });
+    if (combineBoth) {
+      rows = names.map((n) => {
+        const avg = ((cR[n.id] ?? START) + (aR[n.id] ?? START)) / 2;
+        const split = Math.abs(cRank[n.id] - aRank[n.id]) >= splitGap;
+        return { n, score: avg, c: cRank[n.id], a: aRank[n.id], split };
+      });
+    } else {
+      // Only one has voted — show their ratings alone, no C#/A# split badge
+      // (the other has no real ranking yet).
+      const soloR = cVoted ? cR : aR;
+      rows = names.map((n) => ({ n, score: soloR[n.id] ?? START }));
+    }
   } else {
     const R = mode === "claire" ? cR : aR;
     rows = names.map((n) => ({ n, score: R[n.id] ?? START }));
@@ -1055,7 +1068,11 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
   const dead = rows.filter((r) => isVetoed(r.n.id));
   const max = Math.max(...live.map((r) => r.score), START + 1);
   const min = Math.min(...live.map((r) => r.score), START - 1);
-  const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
+  // No real ranking to show until the relevant person/people have voted.
+  const noData = mode === "combined" ? (!cVoted && !aVoted) : (mode === "claire" ? !cVoted : !aVoted);
+  const emptyMsg = mode === "combined"
+    ? "Neither of you has voted yet. Head to the Vote tab to start ranking."
+    : `${mode === "claire" ? "Claire" : "Andrew"} hasn’t voted yet — go to the Vote tab (as ${mode === "claire" ? "Claire" : "Andrew"}) to start ranking.`;
   const vetoLabel = (id) => { const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w.join(" & "); };
 
   // agreement / disagreement summary for the combined view
@@ -1074,6 +1091,11 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
             ...(mode === k ? { background:C.sage, color:"#fff" } : { color:C.muted }) }}>{label}</button>
         ))}
       </div>
+      {noData ? (
+        <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+          <p style={{ fontSize:14, margin:0 }}>{emptyMsg}</p>
+        </div>
+      ) : (<>
       {mode === "combined" && bothVoted && (agree.length > 0 || clash.length > 0) && (
         <div style={{ marginBottom:12, borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
           {agree.length > 0 && (
@@ -1092,7 +1114,9 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
       )}
       <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>
         {mode === "combined"
-          ? `Average of both ratings. Claire: ${cVotes} votes · Andrew: ${aVotes} votes. ★ both = you’ve both starred it.`
+          ? (combineBoth
+              ? `Average of both ratings. Claire: ${cVotes} votes · Andrew: ${aVotes} votes. ★ both = you’ve both starred it.`
+              : `Only ${cVoted ? "Claire" : "Andrew"} has voted so far — showing their ratings alone. The combined ranking appears once you’ve both voted.`)
           : `${mode === "claire" ? "Claire" : "Andrew"}’s ratings · ${mode === "claire" ? cVotes : aVotes} votes cast.`}
       </p>
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
@@ -1122,6 +1146,7 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
           {mode === "combined" && <p style={{ fontSize:11, marginTop:8, color:C.muted }}>Switch to Claire or Andrew to restore a vetoed name.</p>}
         </div>
       )}
+      </>)}
     </div>
   );
 }
