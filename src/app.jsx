@@ -3,13 +3,29 @@ const { useState, useEffect, useRef, useCallback } = React;
 
 /* ----------------------------- palette + type ---------------------------- */
 const C = {
-  bg:"#E7DCC2", paper:"#F5EEDC", ink:"#33271A", muted:"#8C7B5F", line:"#D8CBA8",
-  teal:"#2E4756", ochre:"#C98A24", sage:"#5E7049", clay:"#BB5631",
+  bg:"#E6D9BC", paper:"#F4EBD3", ink:"#2C2114", muted:"#6E5C40", line:"#D2C49E",
+  teal:"#2E4756", ochre:"#C9821A", sage:"#566B36", clay:"#A4663A",
   // Per-person identity colors — used everywhere a person's data is shown.
-  claire:"#C98A24", andrew:"#4F6B43",
+  claire:"#C9821A", andrew:"#4C6B3A",
+  // Per-gender identity + soft background tints for the Vote banner / Rankings.
+  girl:"#B5677B", boy:"#5B7493", girlTint:"#EFE0E2", boyTint:"#DFE6EC",
 };
 // Color for a profile's own data (Claire = orangey-yellow, Andrew = sage green).
 const pColor = (p) => (p === "claire" ? C.claire : C.andrew);
+// Per-gender helpers: accent color, soft background tint, and banner label.
+const gColor = (g) => (g === "boy" ? C.boy : C.girl);
+const gTint = (g) => (g === "boy" ? C.boyTint : C.girlTint);
+const gLabel = (g) => (g === "boy" ? "BOYS" : "GIRLS");
+// Strip the wrapping quotes from meaning strings (e.g. Cornish · 'joyful' -> joyful).
+const cleanMeaning = (s) => (s ? s.replace(/['']/g, "") : s);
+// Linear blend between two #rrggbb colors. t in [0,1].
+const hexLerp = (a, b, t) => {
+  const ch = (h, i) => parseInt(h.slice(i, i + 2), 16);
+  const mix = (i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, "0");
+  return `#${mix(1)}${mix(3)}${mix(5)}`;
+};
+// Ranking gradient (stays in palette): top of list = green, middle = amber, bottom = orange.
+const rankColor = (pos) => (pos <= 0.5 ? hexLerp("#566B36", "#C9821A", pos / 0.5) : hexLerp("#C9821A", "#B5652E", (pos - 0.5) / 0.5));
 const DISPLAY = "var(--disp)";
 const BODY = "var(--body)";
 
@@ -19,6 +35,7 @@ function Ic({ n, s = 16, c = "currentColor", fill = "none" }) {
     check:"M20 6 9 17l-5-5", plus:"M12 5v14M5 12h14", x:"M18 6 6 18M6 6l12 12",
     list:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
     reset:"M3 12a9 9 0 1 0 3-6.7L3 8M3 4v4h4",
+    back:"M19 12H5M12 19l-7-7 7-7",
     trophy:"M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4ZM5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3",
     swords:"M3 3l7 7M14 14l7 7M21 3l-7 7M10 14l-7 7",
     trend:"M3 17l6-6 4 4 8-8M21 7v6h-6",
@@ -49,7 +66,7 @@ const NAMES = {
     ...UNISEX,
   ],
   girl: [
-    { id:"sloane", name:"Sloane", nicks:["Sloey","Anne","Loey","Lo"] },
+    { id:"sloane", name:"Sloane", nicks:["Sloey","Loey","Lo"] },
     { id:"rowan", name:"Rowan", nicks:["Winnie","Robbie"] },
     { id:"devin", name:"Devin", nicks:["Dev","Devvy"] },
     { id:"marlowe", name:"Marlowe", nicks:["Lo","Lowie"] },
@@ -59,12 +76,13 @@ const NAMES = {
     { id:"bridget", name:"Bridget", nicks:["Birdie","Jett"] },
     { id:"merritt", name:"Merritt", nicks:["Merry","Ritt"] },
     { id:"maira", name:"Maira", nicks:["Malley"] },
-    { id:"fiona", name:"Fiona", nicks:["Finn"] },
+    { id:"fiona", name:"Fiona", nicks:["Fio","Oona"] },
     ...UNISEX,
   ],
 };
 const PROFILES = { claire:"Claire", andrew:"Andrew" };
 const START = 1500;
+const BLOCK = 2; // matchups voted per gender before the Vote flow flips to the other
 const HISTORY_CAP = 200;
 
 /* ---------------------- US popularity (SSA, by year) ---------------------
@@ -144,27 +162,27 @@ const MEANING = {
   // boys
   finnegan: "Irish · 'fair, white'",
   sean:     "Irish form of John · 'God is gracious'",
-  keegan:   "Irish · 'little fire / fiery one'",
+  keegan:   "Irish · 'little fire; fiery one'",
   callan:   "Irish · 'mighty in battle'",
   calvin:   "Latin · 'bald'",
   mcallister:"Scottish · 'son of Alexander'",
   // girls
   sloane:   "Irish · 'raider, warrior'",
   rowan:    "Irish · 'little red one'; also the rowan tree",
-  devin:    "Irish · 'little poet / fawn'",
+  devin:    "Irish · 'little poet; fawn'",
   marlowe:  "English · 'lake remnants' place name",
   keelan:   "Irish · 'slender and fair'",
   cloda:    "Irish · river in Tipperary",
   lowen:    "Cornish · 'joyful, happy'",
-  bridget:  "Irish · 'exalted one' — goddess of fire & poetry",
+  bridget:  "Irish · 'exalted one', goddess of fire & poetry",
   merritt:  "English · 'boundary gate' surname",
-  maira:    "Irish form of Mary · 'beloved / wished-for child'",
+  maira:    "Irish form of Mary · 'beloved; wished-for child'",
   fiona:    "Scottish · 'fair, white'",
   // unisex
   lennon:   "Irish · 'lover, sweetheart'",
-  sullivan: "Irish · 'dark-eyed / hawk-eyed'",
+  sullivan: "Irish · 'dark-eyed; hawk-eyed'",
   rory:     "Irish · 'red king'",
-  shae:     "Irish · 'hawk-like / stately'",
+  shae:     "Irish · 'hawk-like; stately'",
 };
 const pctOf = (id, gender) => (PCT[id] && PCT[id][gender] != null) ? PCT[id][gender] : null;
 const fmtPct = (p) => p == null ? null : (p < 0.01 ? "<0.01%" : p.toFixed(2) + "%");
@@ -269,7 +287,7 @@ function makeStore() {
     async getAll() {
       if (this.configured) {
         const res = await fetch(`${rest()}?select=key,value`, { headers: headers() });
-        if (!res.ok) throw new Error(`read failed (${res.status}) — check URL, anon key, and table/policies`);
+        if (!res.ok) throw new Error(`read failed (${res.status}): check URL, anon key, and table/policies`);
         const rows = await res.json();
         if (!Array.isArray(rows)) throw new Error("unexpected response (is the table created?)");
         const out = {};
@@ -381,12 +399,13 @@ const store = makeStore();
 function App() {
   const [data, setData] = useState(null);
   const [profile, setProfile] = useState("claire");
-  const [gender, setGender] = useState("girl");
+  const [voteGender, setVoteGender] = useState("girl"); // gender of the current Vote matchup
+  const [blockCount, setBlockCount] = useState(0);       // matchups done in the current gender block
   const [view, setView] = useState("vote");
   const [pair, setPair] = useState(null);
   const [picked, setPicked] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [favesMode, setFavesMode] = useState(false);
+  const [undo, setUndo] = useState([]); // in-session stack of reversible matchups (per profile)
   const [showAdd, setShowAdd] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [popMode, setPopMode] = useState(() => localStorage.getItem("nameoff_popmode") || "rank");
@@ -394,6 +413,7 @@ function App() {
   const [sync, setSync] = useState({ on: store.configured, status: store.configured ? "syncing" : "local", at: null, err: "" });
   const dataRef = useRef(null);
   const savingRef = useRef(false);
+  const pendingPairRef = useRef(null); // forces the pair effect to use a specific matchup (for go-back)
 
   const load = useCallback(async () => {
     try {
@@ -437,61 +457,106 @@ function App() {
     } finally { savingRef.current = false; }
   }, []);
 
-  const activePool = (d) => {
-    const pg2 = d[gender][profile];
-    let pool = namesFor(gender, d.custom, d.removed).filter((n) => !pg2.vetoed.includes(n.id));
-    if (favesMode) {
-      const faves = new Set([...(d[gender].claire.starred || []), ...(d[gender].andrew.starred || [])]);
-      pool = pool.filter((n) => faves.has(n.id));
-    }
-    return pool;
+  const otherG = (g) => (g === "girl" ? "boy" : "girl");
+  const poolFor = (d, g) => {
+    const pg2 = d[g][profile];
+    return namesFor(g, d.custom, d.removed).filter((n) => !pg2.vetoed.includes(n.id));
+  };
+  const votable = (d, g) => poolFor(d, g).length >= 2;
+  // Decide the gender for the NEXT matchup given how many were just completed.
+  const advance = (d, curG, completed) => {
+    let g = curG, c = completed;
+    if (c >= BLOCK) { g = otherG(curG); c = 0; }
+    if (!votable(d, g) && votable(d, otherG(g))) { g = otherG(g); c = 0; }
+    return { g, c };
   };
 
   useEffect(() => {
     if (!data) return;
-    setPair(pickPair(activePool(data), data[gender][profile], null));
+    if (pendingPairRef.current) { setPair(pendingPairRef.current); pendingPairRef.current = null; setPicked(null); return; }
+    setPair(pickPair(poolFor(data, voteGender), data[voteGender][profile], null));
     setPicked(null);
-  }, [data && 1, gender, profile, favesMode]); // eslint-disable-line
+  }, [data && 1, voteGender, profile]); // eslint-disable-line
 
-  const pg = data ? data[gender][profile] : null;
-  const names = data ? namesFor(gender, data.custom, data.removed) : [];
-  const faveCount = data ? new Set([...(data[gender].claire.starred || []), ...(data[gender].andrew.starred || [])]).size : 0;
+  // If the starting gender can't field a pair, flip once on load.
+  useEffect(() => {
+    if (!data) return;
+    if (!votable(data, voteGender) && votable(data, otherG(voteGender))) { setVoteGender(otherG(voteGender)); setBlockCount(0); }
+  }, [data && 1]); // eslint-disable-line
+
+  const pg = data ? data[voteGender][profile] : null;
+  const names = data ? namesFor(voteGender, data.custom, data.removed) : [];
 
   const vote = (winId, loseId) => {
     if (picked) return;
     setPicked(winId);
+    const g = voteGender;
     const next = clone(dataRef.current);
-    const cur = next[gender][profile];
+    const cur = next[g][profile];
+    const beforeCore = clone(coreOf(cur));      // snapshots for go-back
+    const beforeHist = clone(cur.history);
     cur.ratings = updateElo(cur.ratings, winId, loseId);
     cur.matches[winId] = (cur.matches[winId] || 0) + 1;
     cur.matches[loseId] = (cur.matches[loseId] || 0) + 1;
     cur.votes += 1;
     const snap = {};
-    namesFor(gender, next.custom).forEach((n) => { snap[n.id] = Math.round(cur.ratings[n.id]); });
+    namesFor(g, next.custom).forEach((n) => { snap[n.id] = Math.round(cur.ratings[n.id]); });
     cur.history.push({ m: cur.votes, t: Date.now(), r: snap });
     cur.history = trimHistory(cur.history);
     dataRef.current = next;
+    const entry = { g, profile, pair, core: beforeCore, hist: beforeHist, blockCount };
     setTimeout(() => {
       setData(next);
-      save({ [kCore(gender, profile)]: coreOf(cur), [kHist(gender, profile)]: cur.history });
-      setPair(pickPair(activePool(next), next[gender][profile], pair));
+      save({ [kCore(g, profile)]: coreOf(cur), [kHist(g, profile)]: cur.history });
+      setUndo((u) => [...u.slice(-49), entry]);
+      const completed = blockCount + 1;
+      const { g: ng, c } = advance(next, g, completed);
+      if (ng !== g) { setVoteGender(ng); setBlockCount(c); }            // pair effect re-picks for new gender
+      else { setBlockCount(completed); setPair(pickPair(poolFor(next, ng), next[ng][profile], pair)); }
       setPicked(null);
     }, 280);
   };
-  const skip = () => { if (!picked) setPair(pickPair(activePool(dataRef.current), pg, pair)); };
+  const skip = () => {
+    if (picked) return;
+    const completed = blockCount + 1;
+    const { g, c } = advance(dataRef.current, voteGender, completed);
+    if (g !== voteGender) { setVoteGender(g); setBlockCount(c); }
+    else { setBlockCount(completed); setPair(pickPair(poolFor(dataRef.current, g), dataRef.current[g][profile], pair)); }
+  };
+  // Step back through this session's votes and re-decide them.
+  const canGoBack = undo.some((e) => e.profile === profile);
+  const goBack = () => {
+    let idx = -1;
+    for (let i = undo.length - 1; i >= 0; i--) { if (undo[i].profile === profile) { idx = i; break; } }
+    if (idx < 0) return;
+    const entry = undo[idx];
+    const next = clone(dataRef.current);
+    next[entry.g][profile] = { ...next[entry.g][profile], ...entry.core, history: entry.hist };
+    dataRef.current = next; setData(next);
+    save({ [kCore(entry.g, profile)]: coreOf(next[entry.g][profile]), [kHist(entry.g, profile)]: next[entry.g][profile].history });
+    setUndo((u) => u.filter((_, i) => i !== idx));
+    setBlockCount(entry.blockCount);
+    setView("vote");
+    pendingPairRef.current = entry.pair;
+    if (entry.g !== voteGender) { setVoteGender(entry.g); }
+    else { pendingPairRef.current = null; setPair(entry.pair); setPicked(null); }
+  };
 
   const vetoCurrent = (id) => {
+    const g = voteGender;
     const next = clone(dataRef.current);
-    if (!next[gender][profile].vetoed.includes(id)) next[gender][profile].vetoed.push(id);
+    if (!next[g][profile].vetoed.includes(id)) next[g][profile].vetoed.push(id);
     dataRef.current = next; setData(next); setPicked(null);
-    save({ [kCore(gender, profile)]: coreOf(next[gender][profile]) });
-    setPair(pickPair(activePool(next), next[gender][profile], null));
+    save({ [kCore(g, profile)]: coreOf(next[g][profile]) });
+    if (votable(next, g)) { setPair(pickPair(poolFor(next, g), next[g][profile], null)); }
+    else if (votable(next, otherG(g))) { setVoteGender(otherG(g)); setBlockCount(0); }
+    else { setPair(null); }
   };
-  const unveto = (profileKey, id) => {
+  const unveto = (g, profileKey, id) => {
     const next = clone(dataRef.current);
-    next[gender][profileKey].vetoed = next[gender][profileKey].vetoed.filter((x) => x !== id);
+    next[g][profileKey].vetoed = next[g][profileKey].vetoed.filter((x) => x !== id);
     dataRef.current = next; setData(next);
-    save({ [kCore(gender, profileKey)]: coreOf(next[gender][profileKey]) });
+    save({ [kCore(g, profileKey)]: coreOf(next[g][profileKey]) });
   };
 
   const addName = (name, nicksStr, g) => {
@@ -512,7 +577,7 @@ function App() {
     next.custom = (next.custom || []).filter((c) => c.id !== id);
     dataRef.current = next; setData(next);
     save({ custom: next.custom });
-    if (pair && pair.includes(id)) setPair(pickPair(activePool(next), next[gender][profile], null));
+    if (pair && pair.includes(id)) setPair(pickPair(poolFor(next, voteGender), next[voteGender][profile], null));
   };
 
   const removeName = (id) => {
@@ -520,7 +585,7 @@ function App() {
     next.removed = Array.from(new Set([...(next.removed || []), id]));
     dataRef.current = next; setData(next);
     save({ removed: next.removed });
-    if (pair && pair.includes(id)) setPair(pickPair(activePool(next), next[gender][profile], null));
+    if (pair && pair.includes(id)) setPair(pickPair(poolFor(next, voteGender), next[voteGender][profile], null));
   };
   const restoreName = (id) => {
     const next = clone(dataRef.current);
@@ -529,13 +594,13 @@ function App() {
     save({ removed: next.removed });
   };
 
-  const toggleStar = (id) => {
+  const toggleStar = (g, id) => {
     const next = clone(dataRef.current);
-    const cur = next[gender][profile];
+    const cur = next[g][profile];
     cur.starred = cur.starred || [];
     cur.starred = cur.starred.includes(id) ? cur.starred.filter((x) => x !== id) : [...cur.starred, id];
     dataRef.current = next; setData(next);
-    save({ [kCore(gender, profile)]: coreOf(cur) });
+    save({ [kCore(g, profile)]: coreOf(cur) });
   };
   const setNote = (id, text) => {
     const next = clone(dataRef.current);
@@ -549,11 +614,13 @@ function App() {
   };
 
   const doReset = () => {
+    const g = voteGender;
     const next = clone(dataRef.current);
-    next[gender][profile] = emptyPG(gender, next.custom);
+    next[g][profile] = emptyPG(g, next.custom);
     dataRef.current = next; setData(next);
-    save({ [kCore(gender, profile)]: coreOf(next[gender][profile]), [kHist(gender, profile)]: [] });
-    setPair(pickPair(activePool(next), next[gender][profile], null));
+    save({ [kCore(g, profile)]: coreOf(next[g][profile]), [kHist(g, profile)]: [] });
+    setUndo((u) => u.filter((e) => !(e.profile === profile && e.g === g)));
+    setPair(pickPair(poolFor(next, g), next[g][profile], null));
     setConfirmReset(false);
   };
 
@@ -568,25 +635,23 @@ function App() {
   return (
     <PopModeCtx.Provider value={popMode}>
     <div className="wrap">
-      <Header gender={gender} setGender={setGender} profile={profile} setProfile={setProfile}
-        showAdd={showAdd} setShowAdd={setShowAdd} showSync={showSync} setShowSync={setShowSync} sync={sync}
+      <Header profile={profile} setProfile={setProfile}
+        showAdd={showAdd} setShowAdd={setShowAdd}
         popMode={popMode} setPopMode={changePopMode} />
-      {showSync && <SyncPanel sync={sync} onConnect={connect} onClose={() => setShowSync(false)} />}
       {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom} />}
       <Tabs view={view} setView={setView} />
 
-      {view === "vote" && <Vote names={names} gender={gender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
-        starred={pg.starred || []} onStar={toggleStar} favesMode={favesMode} setFavesMode={setFavesMode} profile={profile} faveCount={faveCount} />}
-      {view === "rankings" && <Rankings data={data} gender={gender} profile={profile} names={names} onUnveto={unveto} onStar={toggleStar} notes={data.notes} onSetNote={setNote} />}
-      {view === "trends" && <Trends data={data} gender={gender} profile={profile} names={names} />}
-      {view === "list" && <AllNames custom={data.custom} removed={data.removed} onRemove={removeName} onRestore={restoreName} />}
+      {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
+        starred={pg.starred || []} onStar={(id) => toggleStar(voteGender, id)} onBack={goBack} canGoBack={canGoBack} profile={profile} />}
+      {view === "rankings" && <Rankings data={data} profile={profile} onUnveto={unveto} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} notes={data.notes} onSetNote={setNote} />}
+      {view === "trends" && <Trends data={data} profile={profile} />}
 
       {view === "vote" && (
         <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:12, color:C.muted }}>
-          <span>{pg.votes} matchup{pg.votes === 1 ? "" : "s"} as <b style={{ color:pColor(profile) }}>{PROFILES[profile]}</b> · {gender === "boy" ? "boys" : "girls"}</span>
+          <span>{pg.votes} matchup{pg.votes === 1 ? "" : "s"} as <b style={{ color:pColor(profile) }}>{PROFILES[profile]}</b> · {voteGender === "boy" ? "boys" : "girls"}</span>
           {confirmReset ? (
             <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-              Reset {PROFILES[profile]}’s {gender}?
+              Reset {PROFILES[profile]}’s {voteGender === "boy" ? "boys" : "girls"}?
               <button onClick={doReset} style={{ padding:"4px 8px", borderRadius:6, fontWeight:600, background:C.clay, color:"#fff" }}>Yes</button>
               <button onClick={() => setConfirmReset(false)} style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${C.line}` }}>No</button>
             </span>
@@ -622,35 +687,23 @@ function syncDot(sync) {
   if (sync.status === "saving" || sync.status === "syncing") return C.ochre;
   return C.sage;
 }
-function Header({ gender, setGender, profile, setProfile, showAdd, setShowAdd, showSync, setShowSync, sync, popMode, setPopMode }) {
+function Header({ profile, setProfile, showAdd, setShowAdd, popMode, setPopMode }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
-        <h1 className="disp" style={{ margin:0, letterSpacing:"0.06em", fontSize:30, fontWeight:700, textTransform:"uppercase" }}>
-          Name<span style={{ color:C.clay }}>·</span>Off
+        <h1 className="disp" style={{ margin:0, letterSpacing:"0.06em", fontSize:32, fontWeight:800, textTransform:"uppercase" }}>
+          Name<span style={{ color:C.sage }}>·</span>Off
         </h1>
         <Seg items={Object.entries(PROFILES)} value={profile} onChange={setProfile} active={pColor} />
       </div>
-      <p style={{ fontSize:12, marginTop:4, color:C.muted }}>Pick the name you love more. Every choice nudges the rankings.</p>
       <div style={{ display:"flex", gap:8, marginTop:12, alignItems:"center", flexWrap:"wrap" }}>
-        {[["girl","Girls"],["boy","Boys"]].map(([k, label]) => (
-          <button key={k} onClick={() => setGender(k)} className="disp lift"
-            style={{ padding:"6px 16px", borderRadius:999, fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em",
-              ...(gender === k ? { background:C.ink, color:C.bg } : { background:C.paper, color:C.muted, border:`1px solid ${C.line}` }) }}>{label}</button>
-        ))}
-        <div style={{ marginLeft:"auto" }}>
+        <div style={{ marginRight:"auto" }}>
           <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
         </div>
-        <button onClick={() => { setShowAdd((s) => !s); setShowSync(false); }} className="lift"
-          style={{ display:"flex", alignItems:"center", gap:4, padding:"6px 12px", borderRadius:999, fontSize:12, fontWeight:600,
-            ...(showAdd ? { background:C.clay, color:"#fff" } : { background:C.paper, color:C.clay, border:`1px solid ${C.line}` }) }}>
+        <button onClick={() => setShowAdd((s) => !s)} className="lift"
+          style={{ display:"flex", alignItems:"center", gap:4, padding:"6px 12px", borderRadius:999, fontSize:12, fontWeight:700,
+            ...(showAdd ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.sage, border:`1px solid ${C.line}` }) }}>
           <Ic n={showAdd ? "x" : "plus"} s={13} /> {showAdd ? "Close" : "Add name"}
-        </button>
-        <button onClick={() => { setShowSync((s) => !s); setShowAdd(false); }} className="lift" title="Sync settings"
-          style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:999, fontSize:12, fontWeight:600,
-            background:C.paper, color:C.muted, border:`1px solid ${C.line}` }}>
-          <span style={{ width:8, height:8, borderRadius:999, background:syncDot(sync) }} />
-          {sync.on ? "Synced" : "Local"}
         </button>
       </div>
     </div>
@@ -661,8 +714,8 @@ function Header({ gender, setGender, profile, setProfile, showAdd, setShowAdd, s
 function SyncPanel({ sync, onConnect, onClose }) {
   const [url, setUrl] = useState(store.url);
   const [key, setKey] = useState(store.key);
-  const status = !sync.on ? "Local only on this device — not shared."
-    : sync.status === "error" ? `Sync error — ${sync.err || "check the URL, anon key, and that the table + policies exist"}`
+  const status = !sync.on ? "Local only on this device, not shared."
+    : sync.status === "error" ? `Sync error: ${sync.err || "check the URL, anon key, and that the table + policies exist"}`
     : sync.status === "saving" ? "Saving…" : sync.status === "syncing" ? "Connecting…"
     : `Synced${sync.at ? " · " + new Date(sync.at).toLocaleTimeString() : ""}`;
   const field = { flex:1, minWidth:200, padding:"8px 10px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:13 };
@@ -725,7 +778,7 @@ function AddPanel({ custom, onAdd, onRemove }) {
 
 /* -------------------------------- tabs ----------------------------------- */
 function Tabs({ view, setView }) {
-  const items = [["vote","Vote","swords"],["rankings","Rankings","trophy"],["trends","Trends","trend"],["list","All","list"]];
+  const items = [["vote","Vote","swords"],["rankings","Rankings","trophy"],["trends","Trends","trend"]];
   return (
     <div style={{ display:"flex", gap:4, marginBottom:20, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label, icon]) => (
@@ -824,12 +877,12 @@ function PopLine({ id, gender, compact = false }) {
   if (!fp) return null;
   const tier = tierOf(fp.funcRank);
   const main = popMode === "pct"
-    ? (fmtPct(fp.funcPct) || (fp.funcRank == null ? "<0.01%" : "—"))
+    ? (fmtPct(fp.funcPct) || (fp.funcRank == null ? "<0.01%" : "n/a"))
     : (fp.funcRank == null ? (compact ? "1000+" : "Outside top 1000")
         : (fp.hasVar ? "≈#" : "US #") + fp.funcRank);
   const hasBreakdown = fp.hasVar || (compact && (fp.nicks.length > 0 || !!MEANING[id]));
   const cell = (r, p, approx) => popMode === "pct"
-    ? (fmtPct(p) || (r == null ? "1000+" : "—"))
+    ? (fmtPct(p) || (r == null ? "1000+" : "n/a"))
     : fmtRank(r, approx, true);
   return (
     <div style={{ marginTop: compact ? 2 : 6, width: compact ? "auto" : "100%" }}>
@@ -895,61 +948,60 @@ function NameCard({ n, gender, accent, onPick, onVeto, picked, dim, starred, onS
       onClick={() => !picked && onPick()}
       onKeyDown={(e) => { if (!picked && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onPick(); } }}
       className="lift" style={{
-        flex:1, display:"flex", flexDirection:"column", justifyContent:"center", borderRadius:16, padding:"28px 16px", textAlign:"center", position:"relative", background:C.paper,
-        border:`2px solid ${chosen ? accent : C.line}`, minHeight:150,
-        boxShadow: chosen ? `0 0 0 4px ${accent}22` : "0 2px 0 rgba(0,0,0,0.04)",
+        flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", borderRadius:16, padding:"44px 16px 22px", textAlign:"center", position:"relative", background:C.paper,
+        border:`2px solid ${chosen ? accent : C.line}`, minHeight:180,
+        boxShadow: chosen ? `0 0 0 4px ${accent}22` : "0 2px 0 rgba(0,0,0,0.05)",
         opacity: dim ? 0.4 : 1, transform: chosen ? "translateY(-3px)" : "none", cursor: picked ? "default" : "pointer",
       }}>
       {onStar && (
         <button onClick={(e) => { e.stopPropagation(); onStar(); }} aria-label={starred ? `Unstar ${n.name}` : `Star ${n.name}`} title="Favorite"
-          className="lift" style={{ position:"absolute", top:8, left:8, display:"flex", alignItems:"center", padding:"4px", borderRadius:999, color:C.ochre, opacity: starred ? 1 : 0.5 }}>
-          <Ic n="star" s={15} c={C.ochre} fill={starred ? C.ochre : "none"} />
+          className="lift" style={{ position:"absolute", top:10, left:10, display:"flex", alignItems:"center", padding:"4px", borderRadius:999, color:C.ochre, opacity: starred ? 1 : 0.55 }}>
+          <Ic n="star" s={17} c={C.ochre} fill={starred ? C.ochre : "none"} />
         </button>
       )}
       <button onClick={(e) => { e.stopPropagation(); onVeto(); }} disabled={!!picked} aria-label={`Veto ${n.name}`}
-        className="lift" style={{ position:"absolute", top:8, right:8, display:"flex", alignItems:"center", gap:4, fontSize:10, padding:"4px 6px", borderRadius:999, color:C.clay, opacity:0.55 }}>
-        <Ic n="ban" s={11} /> veto
+        className="lift" style={{ position:"absolute", top:10, right:10, display:"flex", alignItems:"center", gap:4, fontSize:11, fontWeight:700, padding:"4px 10px", borderRadius:999, color:C.clay, background:C.bg, border:`1px solid ${C.line}` }}>
+        <Ic n="ban" s={13} /> Veto
       </button>
-      <div style={{ width:36, height:36, borderRadius:999, margin:"0 auto 12px", display:"flex", alignItems:"center", justifyContent:"center",
-        background: chosen ? accent : `${accent}1A`, color: chosen ? "#fff" : accent }}>
-        {chosen ? <Ic n="check" s={18} c="#fff" /> : null}
+      {/* Fixed-height slots so every parallel row lines up across both cards. */}
+      <div style={{ minHeight:46, display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <span className="disp" style={{ fontSize:36, fontWeight:800, lineHeight:1.04, color:C.ink }}>{n.name}</span>
       </div>
-      <div className="disp" style={{ fontSize:28, fontWeight:700, lineHeight:1.05, color:C.ink }}>{n.name}</div>
-      {n.nicks.length > 0 && <div style={{ fontSize:12, marginTop:8, color:C.muted }}>{n.nicks.join(" · ")}</div>}
-      {MEANING[n.id] && <div style={{ fontSize:11, marginTop:6, color:C.muted, fontStyle:"italic", lineHeight:1.35 }}>{MEANING[n.id]}</div>}
-      {popNicks.length > 0 && (
-        <div style={{ display:"flex", gap:5, justifyContent:"center", flexWrap:"wrap", marginTop:8 }}>
-          {popNicks.map((nk, i) => {
-            const t = tierOf(nk.rank);
-            const fig = popMode === "pct" ? (fmtPct(nk.pct) || "—") : (nk.rank == null ? "1000+" : (nk.approx ? "≈#" : "#") + nk.rank);
-            return (
-              <span key={i} title={`Nickname popularity`} style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:999, background:`${t.color}1A`, color:t.color, lineHeight:1.3 }}>
-                {nk.label} {fig} · {t.label}
-              </span>
-            );
-          })}
-        </div>
-      )}
-      <div style={{ display:"flex", justifyContent:"center" }}><PopLine id={n.id} gender={gender} /></div>
+      <div style={{ minHeight:24, marginTop:8, fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</div>
+      <div style={{ minHeight:36, marginTop:6, fontSize:12.5, color:C.muted, fontStyle:"italic", lineHeight:1.4 }}>{MEANING[n.id] ? cleanMeaning(MEANING[n.id]) : ""}</div>
+      <div style={{ minHeight:88, marginTop:6, display:"flex", justifyContent:"center" }}><PopLine id={n.id} gender={gender} /></div>
+      <div style={{ minHeight:50, marginTop:8 }}>
+        {popNicks.length > 0 && (
+          <div>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", color:C.muted, marginBottom:5 }}>Goes by</div>
+            <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
+              {popNicks.map((nk, i) => {
+                const fig = popMode === "pct" ? (fmtPct(nk.pct) || "") : (nk.rank == null ? "1000+" : (nk.approx ? "≈#" : "#") + nk.rank);
+                return (
+                  <span key={i} title="How common this nickname is on its own" style={{ fontSize:11, fontWeight:700, padding:"2px 10px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, lineHeight:1.4 }}>
+                    {nk.label} <span style={{ color:C.muted, fontWeight:600 }}>{fig}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, onStar, favesMode, setFavesMode, profile, faveCount }) {
-  const favesToggle = (
+function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, onStar, onBack, canGoBack, profile }) {
+  const banner = (
     <div style={{ display:"flex", justifyContent:"center", marginBottom:14 }}>
-      <button onClick={() => setFavesMode(!favesMode)} className="lift" style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700, padding:"6px 14px", borderRadius:999,
-        ...(favesMode ? { background:C.ochre, color:"#fff" } : { background:C.paper, color:C.muted, border:`1px solid ${C.line}` }) }}>
-        <Ic n="star" s={13} c={favesMode ? "#fff" : C.muted} fill={favesMode ? "#fff" : "none"} /> {favesMode ? `Faves only · both of you (${faveCount})` : "Faves only"}
-      </button>
+      <span className="disp" style={{ fontSize:14, fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase", color: gColor(gender),
+        padding:"6px 22px", borderRadius:999, background: gTint(gender), border:`1px solid ${C.line}` }}>{gLabel(gender)}</span>
     </div>
   );
   if (!pair) return (
     <div>
-      {favesToggle}
+      {banner}
       <p style={{ fontSize:14, borderRadius:12, padding:"32px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-        {favesMode
-          ? `Faves pools both of your stars — you’ve starred ${faveCount} together. Star at least 2 to run a faves round, or turn Faves off.`
-          : "Not enough names left to compare. Un-veto a few in Rankings, or add more names."}
+        Not enough names left to compare. Un-veto a few in Rankings, or add more names.
       </p>
     </div>
   );
@@ -957,16 +1009,20 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, on
   const na = findName(names, a), nb = findName(names, b);
   return (
     <div>
-      {favesToggle}
+      {banner}
       <div className="cards">
         <NameCard n={na} gender={gender} accent={C.teal} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} starred={starred.includes(a)} onStar={() => onStar(a)} />
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span className="disp" style={{ fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} accent={C.clay} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} starred={starred.includes(b)} onStar={() => onStar(b)} />
+        <NameCard n={nb} gender={gender} accent={C.sage} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} starred={starred.includes(b)} onStar={() => onStar(b)} />
       </div>
-      <div style={{ display:"flex", justifyContent:"center", marginTop:16 }}>
-        <button onClick={onSkip} disabled={!!picked} className="lift" style={{ fontSize:12, padding:"6px 12px", borderRadius:999, color:C.muted, border:`1px solid ${C.line}`, background:C.paper }}>Can’t decide — skip</button>
+      <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
+        <button onClick={onBack} disabled={!canGoBack} className="lift" title="Revisit your last vote and change it"
+          style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700, padding:"6px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, color: canGoBack ? C.teal : C.line, cursor: canGoBack ? "pointer" : "default" }}>
+          <Ic n="back" s={14} c={canGoBack ? C.teal : C.line} /> Go back
+        </button>
+        <button onClick={onSkip} disabled={!!picked} className="lift" style={{ fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:999, color:C.muted, border:`1px solid ${C.line}`, background:C.paper }}>Can’t decide, skip</button>
       </div>
     </div>
   );
@@ -994,17 +1050,17 @@ function NoteBlock({ id, notes, profile, onSetNote }) {
     </div>
   );
 }
-function RankRow({ r, i, mode, gender, max, min, profile, cStar, aStar, onStar, notes, onSetNote }) {
+function RankRow({ r, i, n, mode, gender, max, min, profile, cStar, aStar, onStar, notes, onSetNote }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
-  const accent = i === 0 ? C.clay : C.sage;
+  const accent = rankColor(n > 1 ? i / (n - 1) : 0);
   const iStar = (profile === "claire" ? cStar : aStar).includes(r.n.id);
   const both = cStar.includes(r.n.id) && aStar.includes(r.n.id);
   const noteCount = notes[r.n.id] ? Object.keys(notes[r.n.id]).length : 0;
   return (
     <li style={{ borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${both ? C.ochre : C.line}` }}>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-        <span className="disp" style={{ width:24, textAlign:"center", fontSize:18, fontWeight:700, color: i < 3 ? C.clay : C.muted }}>{i + 1}</span>
+        <span className="disp" style={{ width:24, textAlign:"center", fontSize:18, fontWeight:700, color: accent }}>{i + 1}</span>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span className="disp" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{r.n.name}</span>
@@ -1025,12 +1081,9 @@ function RankRow({ r, i, mode, gender, max, min, profile, cStar, aStar, onStar, 
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
           </div>
         </div>
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-          <button onClick={() => onStar(r.n.id)} className="lift" aria-label="Favorite" title="Favorite" style={{ display:"flex", padding:2, color:C.ochre, opacity: iStar ? 1 : 0.4 }}>
-            <Ic n="star" s={16} c={C.ochre} fill={iStar ? C.ochre : "none"} />
-          </button>
-          <span className="disp" style={{ fontSize:13, fontWeight:700, color:C.muted }}>{Math.round(r.score)}</span>
-        </div>
+        <button onClick={() => onStar(r.n.id)} className="lift" aria-label="Favorite" title="Favorite" style={{ display:"flex", padding:2, color:C.ochre, opacity: iStar ? 1 : 0.4 }}>
+          <Ic n="star" s={18} c={C.ochre} fill={iStar ? C.ochre : "none"} />
+        </button>
       </div>
       <button onClick={() => setShowNote((s) => !s)} className="lift" style={{ marginTop:6, fontSize:11, fontWeight:600, padding:"3px 9px", borderRadius:999, border:`1px solid ${C.line}`, background:"transparent", color: noteCount ? C.sage : C.muted }}>
         ✎ {showNote ? "hide note" : (noteCount ? `notes · ${noteCount}` : "add note")}
@@ -1039,9 +1092,27 @@ function RankRow({ r, i, mode, gender, max, min, profile, cStar, aStar, onStar, 
     </li>
   );
 }
-function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSetNote }) {
+function Rankings({ data, profile, onUnveto, onStar, onRemove, onRestore, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
+  return (
+    <div>
+      <div style={{ display:"flex", gap:4, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
+        {[["combined","Combined"],["claire","Claire"],["andrew","Andrew"]].map(([k, label]) => (
+          <button key={k} onClick={() => setMode(k)} className="lift" style={{ flex:1, padding:"7px 0", borderRadius:8, fontSize:14, fontWeight:700,
+            ...(mode === k ? { background: k === "claire" ? C.claire : k === "andrew" ? C.andrew : C.teal, color:"#fff" } : { color:C.muted }) }}>{label}</button>
+        ))}
+      </div>
+      <div className="twocol">
+        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
+        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
+      </div>
+      <ManageNames data={data} onRemove={onRemove} onRestore={onRestore} />
+    </div>
+  );
+}
+function GenderRankColumn({ gender, title, mode, data, profile, notes, onSetNote, onUnveto, onStar }) {
   notes = notes || {};
+  const names = namesFor(gender, data.custom, data.removed);
   const cR = data[gender].claire.ratings, aR = data[gender].andrew.ratings;
   const cVeto = data[gender].claire.vetoed, aVeto = data[gender].andrew.vetoed;
   const cStar = data[gender].claire.starred || [], aStar = data[gender].andrew.starred || [];
@@ -1081,7 +1152,7 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
   const noData = mode === "combined" ? (!cVoted && !aVoted) : (mode === "claire" ? !cVoted : !aVoted);
   const emptyMsg = mode === "combined"
     ? "Neither of you has voted yet. Head to the Vote tab to start ranking."
-    : `${mode === "claire" ? "Claire" : "Andrew"} hasn’t voted yet — go to the Vote tab (as ${mode === "claire" ? "Claire" : "Andrew"}) to start ranking.`;
+    : `${mode === "claire" ? "Claire" : "Andrew"} hasn’t voted yet. Go to the Vote tab (as ${mode === "claire" ? "Claire" : "Andrew"}) to start ranking.`;
   const vetoLabel = (id) => { const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w.join(" & "); };
 
   // agreement / disagreement summary for the combined view
@@ -1093,12 +1164,9 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
   const clash = [...scored].sort((p, q) => q.gap - p.gap).filter((x) => x.gap >= splitGap).slice(0, 3);
 
   return (
-    <div>
-      <div style={{ display:"flex", gap:4, marginBottom:12, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
-        {[["combined","Combined"],["claire","Claire"],["andrew","Andrew"]].map(([k, label]) => (
-          <button key={k} onClick={() => setMode(k)} className="lift" style={{ flex:1, padding:"6px 0", borderRadius:8, fontSize:14, fontWeight:600,
-            ...(mode === k ? { background:C.sage, color:"#fff" } : { color:C.muted }) }}>{label}</button>
-        ))}
+    <div style={{ flex:1, minWidth:0 }}>
+      <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
+        <h3 className="disp" style={{ margin:0, fontSize:20, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
       </div>
       {noData ? (
         <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
@@ -1125,13 +1193,13 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
         {mode === "combined"
           ? (combineBoth
               ? `Average of both ratings. Claire: ${cVotes} votes · Andrew: ${aVotes} votes. ★ both = you’ve both starred it.`
-              : `Only ${cVoted ? "Claire" : "Andrew"} has voted so far — showing their ratings alone. The combined ranking appears once you’ve both voted.`)
+              : `Only ${cVoted ? "Claire" : "Andrew"} has voted so far. Showing their ratings alone; the combined ranking appears once you’ve both voted.`)
           : `${mode === "claire" ? "Claire" : "Andrew"}’s ratings · ${mode === "claire" ? cVotes : aVotes} votes cast.`}
       </p>
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
-          <RankRow key={r.n.id} r={r} i={i} mode={mode} gender={gender} max={max} min={min}
-            profile={profile} cStar={cStar} aStar={aStar} onStar={onStar} notes={notes} onSetNote={onSetNote} />
+          <RankRow key={r.n.id} r={r} i={i} n={live.length} mode={mode} gender={gender} max={max} min={min}
+            profile={profile} cStar={cStar} aStar={aStar} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
         ))}
       </ol>
       {dead.length > 0 && (
@@ -1147,7 +1215,7 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
                   <span style={{ fontSize:10, marginLeft:8, color:C.clay }}>vetoed by {vetoLabel(r.n.id)}</span>
                 </div>
                 {mode !== "combined" && (
-                  <button onClick={() => onUnveto(mode, r.n.id)} className="lift" style={{ fontSize:12, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>restore</button>
+                  <button onClick={() => onUnveto(gender, mode, r.n.id)} className="lift" style={{ fontSize:12, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>restore</button>
                 )}
               </li>
             ))}
@@ -1160,54 +1228,61 @@ function Rankings({ data, gender, profile, names, onUnveto, onStar, notes, onSet
   );
 }
 
-/* ------------------------------ all names -------------------------------- */
-function AllNames({ custom, removed, onRemove, onRestore }) {
+/* --------------------------- manage names -------------------------------- */
+function ManageNames({ data, onRemove, onRestore }) {
+  const [open, setOpen] = useState(false);
+  const { custom, removed } = data;
   const sortByName = (a, b) => a.name.localeCompare(b.name);
-  const girl = [...namesFor("girl", custom, removed)].sort(sortByName);
-  const boy = [...namesFor("boy", custom, removed)].sort(sortByName);
   const allById = {};
   ["boy", "girl"].forEach((g) => NAMES[g].forEach((n) => { allById[n.id] = n.name; }));
   (custom || []).forEach((c) => { allById[c.id] = c.name; });
   const removedList = (removed || []).map((id) => ({ id, name: allById[id] || id }));
-  const Col = ({ title, gender, list }) => (
-    <div style={{ flex:1 }}>
-      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:8 }}>
-        <h3 className="disp" style={{ margin:0, fontSize:18, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", color:C.ink }}>{title}</h3>
-        <span style={{ fontSize:12, color:C.muted }}>{list.length}</span>
-      </div>
-      <ul style={{ display:"flex", flexDirection:"column", gap:6 }}>
-        {list.map((n) => (
-          <li key={n.id} style={{ borderRadius:8, padding:"8px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-              <span className="disp" style={{ fontSize:16, fontWeight:700, color:C.ink }}>{n.name}</span>
-              {n.custom && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added</span>}
+  const Col = ({ title, gender }) => {
+    const list = [...namesFor(gender, custom, removed)].sort(sortByName);
+    return (
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:8 }}>
+          <h4 className="disp" style={{ margin:0, fontSize:15, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h4>
+          <span style={{ fontSize:12, color:C.muted }}>{list.length}</span>
+        </div>
+        <ul style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+          {list.map((n) => (
+            <li key={n.id} style={{ display:"flex", alignItems:"center", gap:6, borderRadius:999, padding:"4px 6px 4px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
+              <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{n.name}</span>
+              {n.custom && <span style={{ fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added</span>}
               <button onClick={() => onRemove(n.id)} className="lift" aria-label={`Remove ${n.name}`} title="Remove from app"
-                style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:4, fontSize:10, padding:"3px 7px", borderRadius:999, color:C.clay, border:`1px solid ${C.line}` }}>
-                <Ic n="x" s={11} /> remove
+                style={{ display:"flex", alignItems:"center", padding:2, borderRadius:999, color:C.muted }}>
+                <Ic n="x" s={12} />
               </button>
-            </div>
-            <PopLine id={n.id} gender={gender} compact />
-            {n.nicks.length > 0 && <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>{n.nicks.join(" · ")}</div>}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
   return (
-    <div>
-      <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>Every name A–Z, with its 2025 US rank. Unisex names appear on both lists. “Remove” takes a name out for both of you (restore below).</p>
-      <div className="twocol"><Col title="Girls" gender="girl" list={girl} /><Col title="Boys" gender="boy" list={boy} /></div>
-      {removedList.length > 0 && (
-        <div style={{ marginTop:20 }}>
-          <h3 className="disp" style={{ margin:"0 0 8px", fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", color:C.muted }}>Removed · {removedList.length}</h3>
-          <ul style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {removedList.map((r) => (
-              <li key={r.id} style={{ display:"flex", alignItems:"center", gap:8, borderRadius:999, padding:"4px 6px 4px 12px", background:C.paper, border:`1px dashed ${C.line}` }}>
-                <span className="disp" style={{ fontSize:14, fontWeight:700, color:C.muted, textDecoration:"line-through" }}>{r.name}</span>
-                <button onClick={() => onRestore(r.id)} className="lift" style={{ fontSize:11, padding:"3px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>restore</button>
-              </li>
-            ))}
-          </ul>
+    <div style={{ marginTop:26, borderTop:`1px solid ${C.line}`, paddingTop:16 }}>
+      <button onClick={() => setOpen((o) => !o)} className="lift"
+        style={{ display:"flex", alignItems:"center", gap:6, fontSize:13, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:C.muted }}>
+        <Ic n="list" s={15} /> Manage names {open ? "▾" : "▸"}
+      </button>
+      {open && (
+        <div style={{ marginTop:12 }}>
+          <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>Remove a name for both of you, or restore one you removed. Add new names with the “+ Add name” button up top.</p>
+          <div className="twocol"><Col title="Girls" gender="girl" /><Col title="Boys" gender="boy" /></div>
+          {removedList.length > 0 && (
+            <div style={{ marginTop:18 }}>
+              <h4 className="disp" style={{ margin:"0 0 8px", fontSize:13, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:C.muted }}>Removed · {removedList.length}</h4>
+              <ul style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {removedList.map((r) => (
+                  <li key={r.id} style={{ display:"flex", alignItems:"center", gap:8, borderRadius:999, padding:"4px 6px 4px 12px", background:C.paper, border:`1px dashed ${C.line}` }}>
+                    <span style={{ fontSize:13, fontWeight:600, color:C.muted, textDecoration:"line-through" }}>{r.name}</span>
+                    <button onClick={() => onRestore(r.id)} className="lift" style={{ fontSize:11, padding:"3px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>restore</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1215,9 +1290,9 @@ function AllNames({ custom, removed, onRemove, onRestore }) {
 }
 
 /* ------------------------------- trends ---------------------------------- */
-const LINE_COLORS = ["#2F6B6B","#C98A24","#BB5631","#5E7049","#7A5BA6","#3A6EA5","#A6743A","#9A5B6E"];
+const LINE_COLORS = ["#2E4756","#C9821A","#566B36","#B5677B","#5B7493","#A4663A","#7A5BA6","#3A6EA5"];
 function TrendChart({ lines, xUnit = "votes" }) {
-  const W = 600, H = 240, padL = 40, padR = 12, padT = 12, padB = 26;
+  const W = 600, H = 240, padL = 14, padR = 12, padT = 12, padB = 26;
   const allPts = lines.flatMap((l) => l.points);
   if (!allPts.length) return null;
   const xsAll = allPts.map((p) => p.x), ysAll = allPts.map((p) => p.y);
@@ -1247,10 +1322,7 @@ function TrendChart({ lines, xUnit = "votes" }) {
       onMouseMove={onMove} onMouseLeave={() => setHx(null)}>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:"auto", display:"block" }}>
         {yticks.map((t, i) => (
-          <g key={i}>
-            <line x1={padL} x2={W - padR} y1={Y(t)} y2={Y(t)} stroke={C.line} strokeDasharray="3 3" />
-            <text x={4} y={Y(t) + 3} fontSize="10" fill={C.muted}>{Math.round(t)}</text>
-          </g>
+          <line key={i} x1={padL} x2={W - padR} y1={Y(t)} y2={Y(t)} stroke={C.line} strokeDasharray="3 3" />
         ))}
         <text x={padL} y={H - 6} fontSize="10" fill={C.muted}>0</text>
         <text x={W - padR} y={H - 6} fontSize="10" fill={C.muted} textAnchor="end">{maxX} {xUnit}</text>
@@ -1266,12 +1338,11 @@ function TrendChart({ lines, xUnit = "votes" }) {
       </svg>
       {hx != null && (
         <div style={{ position:"absolute", top:8, left:48, background:C.bg, border:`1px solid ${C.line}`, borderRadius:8, padding:"6px 8px", fontSize:11, pointerEvents:"none" }}>
-          <div style={{ color:C.muted, marginBottom:2 }}>after {hx} {xUnit}</div>
-          {lines.map((l) => (
+          <div style={{ color:C.muted, marginBottom:2 }}>after {hx} {xUnit} · highest first</div>
+          {[...lines].sort((a, b) => (valAt(b, hx) ?? 0) - (valAt(a, hx) ?? 0)).map((l) => (
             <div key={l.id} style={{ display:"flex", alignItems:"center", gap:6 }}>
               <span style={{ width:8, height:8, borderRadius:999, background:l.color }} />
               <span style={{ color:C.ink }}>{l.name}</span>
-              <b style={{ marginLeft:"auto", color:C.ink }}>{Math.round(valAt(l, hx))}</b>
             </div>
           ))}
         </div>
@@ -1287,7 +1358,8 @@ const trendEmpty = (msg) => (
 );
 function ByNameTrends({ pg, names, profileName }) {
   const ranked = [...names].sort((a, b) => (pg.ratings[b.id] ?? START) - (pg.ratings[a.id] ?? START));
-  const [sel, setSel] = useState(() => ranked.slice(0, 5).map((n) => n.id));
+  // Default to every name still in play (not vetoed) so all trend lines show.
+  const [sel, setSel] = useState(() => ranked.filter((n) => !(pg.vetoed || []).includes(n.id)).map((n) => n.id));
   if (!pg.history || pg.history.length < 2) return trendEmpty(`Cast a few votes as ${profileName} to start a trend line.`);
   const lines = sel.map((id, i) => ({
     id, name: findName(names, id).name, color: LINE_COLORS[i % LINE_COLORS.length],
@@ -1324,7 +1396,7 @@ function CompareTrends({ data, gender, names }) {
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
-        Elo for <b style={{ color:C.ink }}>{findName(names, id).name}</b> — Claire (solid) vs Andrew (dashed). Pick a name below.
+        Rating for <b style={{ color:C.ink }}>{findName(names, id).name}</b> · Claire (solid) vs Andrew (dashed). Pick a name below.
       </p>
       <TrendChart lines={lines} />
       <div style={{ display:"flex", gap:14, marginTop:8, fontSize:11, color:C.muted }}>
@@ -1340,16 +1412,19 @@ function CompareTrends({ data, gender, names }) {
     </div>
   );
 }
-function Trends({ data, gender, profile, names }) {
+function Trends({ data, profile }) {
   const [mode, setMode] = useState("byName");
+  const [g, setG] = useState("girl");
+  const names = namesFor(g, data.custom, data.removed);
   return (
     <div>
-      <div style={{ marginBottom:12 }}>
+      <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
+        <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={setG} active={gColor} />
         <Seg items={[["byName", "By name"], ["compare", "Compare us"]]} value={mode} onChange={setMode} />
       </div>
       {mode === "byName"
-        ? <ByNameTrends pg={data[gender][profile]} names={names} profileName={PROFILES[profile]} />
-        : <CompareTrends data={data} gender={gender} names={names} />}
+        ? <ByNameTrends pg={data[g][profile]} names={names} profileName={PROFILES[profile]} />
+        : <CompareTrends data={data} gender={g} names={names} />}
     </div>
   );
 }
