@@ -179,7 +179,7 @@ const MEANING = {
   sloane:   "Irish · 'raider, warrior'",
   rowan:    "Irish · 'little red one'; also the rowan tree",
   devin:    "Irish · 'little poet; fawn'",
-  marlowe:  "English · 'lake remnants' place name",
+  marlowe:  "English · place name, 'land left where a lake drained'",
   keelan:   "Irish · 'slender and fair'",
   cloda:    "Irish · river in Tipperary",
   lowen:    "Cornish · 'joyful, happy'",
