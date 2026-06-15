@@ -1613,19 +1613,88 @@ How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> ove
     </div>
   );
 }
+// Scatter that plots each name by two rank maps. Rank 1 sits top-right (loved by
+// both axes); opposite corners are disagreements.
+function ScatterCompare({ names, xr, yr, corners }) {
+  const pts = names.map((n) => ({ n, x: xr[n.id], y: yr[n.id] })).filter((p) => p.x != null && p.y != null);
+  if (pts.length < 2) return trendEmpty("Not enough names ranked yet.");
+  const N = Math.max(names.length, 2);
+  const S = 360, pad = 30;
+  const px = (r) => pad + (1 - (r - 1) / (N - 1)) * (S - 2 * pad); // rank 1 -> right
+  const py = (r) => pad + ((r - 1) / (N - 1)) * (S - 2 * pad);     // rank 1 -> top
+  const mid = (N + 1) / 2;
+  return (
+    <div style={{ borderRadius:12, padding:10, background:C.paper, border:`1px solid ${C.line}` }}>
+      <svg viewBox={`0 0 ${S} ${S}`} style={{ width:"100%", height:"auto", display:"block", overflow:"visible" }}>
+        <line x1={px(mid)} x2={px(mid)} y1={pad} y2={S - pad} stroke={C.line} strokeDasharray="3 3" />
+        <line x1={pad} x2={S - pad} y1={py(mid)} y2={py(mid)} stroke={C.line} strokeDasharray="3 3" />
+        <text x={S - pad} y={pad - 11} textAnchor="end" fontSize="11" fontWeight="800" fill={C.sage}>{corners.tr}</text>
+        <text x={pad} y={pad - 11} textAnchor="start" fontSize="11" fontWeight="700" fill={C.muted}>{corners.tl}</text>
+        <text x={pad} y={S - pad + 18} textAnchor="start" fontSize="11" fontWeight="700" fill={C.muted}>{corners.bl}</text>
+        <text x={S - pad} y={S - pad + 18} textAnchor="end" fontSize="11" fontWeight="700" fill={C.clay}>{corners.br}</text>
+        {pts.map((p) => {
+          const gap = Math.abs(p.x - p.y);
+          const col = gap >= N / 3 ? C.clay : (gap <= N / 8 ? C.sage : C.ochre);
+          return (
+            <g key={p.n.id}>
+              <circle cx={px(p.x)} cy={py(p.y)} r="4.5" fill={col} />
+              <text x={px(p.x) + 6} y={py(p.y) + 3} fontSize="9" fontWeight="600" fill={C.ink}>{p.n.name}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+function AgreementView({ data, gender, names }) {
+  const c = data[gender].claire, a = data[gender].andrew;
+  if (!c.votes || !a.votes) return trendEmpty("Once you and Andrew have both voted, this maps where you agree and where you clash.");
+  const xr = ranksOf(c.ratings, names), yr = ranksOf(a.ratings, names);
+  return (
+    <div>
+      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>Each name by <b style={{ color:C.claire }}>Claire</b>’s rank (further right = she loves it) and <b style={{ color:C.andrew }}>Andrew</b>’s rank (higher = he loves it). Top-right corner = you both love it; opposite corners are clashes.</p>
+      <ScatterCompare names={names} xr={xr} yr={yr} corners={{ tr:"You both ❤", tl:"Andrew’s picks", br:"Claire’s picks", bl:"Both pass" }} />
+    </div>
+  );
+}
+function FamVsUsView({ data, gender, names }) {
+  const c = data[gender].claire, a = data[gender].andrew;
+  const voted = data.roster.filter((p) => !isOwner(p.key)).map((p) => p.key).filter((k) => data[gender][k].votes > 0);
+  if ((!c.votes && !a.votes) || !voted.length) return trendEmpty("Once you two and at least one family member have voted, this shows where the family differs from you.");
+  const couple = {}, fam = {};
+  names.forEach((n) => {
+    const cr = c.ratings[n.id] ?? START, ar = a.ratings[n.id] ?? START;
+    couple[n.id] = (c.votes && a.votes) ? (cr + ar) / 2 : (c.votes ? cr : ar);
+    fam[n.id] = voted.reduce((s, k) => s + (data[gender][k].ratings[n.id] ?? START), 0) / voted.length;
+  });
+  const xr = ranksOf(couple, names), yr = ranksOf(fam, names);
+  return (
+    <div>
+      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>Each name by <b style={{ color:C.teal }}>your</b> combined rank (further right = you two love it) and the <b style={{ color:C.sage }}>family</b>’s rank (higher = they love it). Opposite corners are where you and the family disagree.</p>
+      <ScatterCompare names={names} xr={xr} yr={yr} corners={{ tr:"Everyone ❤", tl:"Fam favors", br:"You favor", bl:"Everyone passes" }} />
+    </div>
+  );
+}
 function Trends({ data, profile }) {
   const [mode, setMode] = useState("byName");
   const [g, setG] = useState("girl");
   const names = namesFor(g, data.custom, data.removed);
+  const modes = [["byName","Compare names"],["compare","Compare voters"],["agree","Agreement"],["fam","Fam vs us"]];
   return (
     <div>
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={setG} active={gColor} />
-        <Seg items={[["byName", "Compare names"], ["compare", "Compare people"]]} value={mode} onChange={setMode} />
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+          {modes.map(([k, label]) => (
+            <button key={k} onClick={() => setMode(k)} className="lift" style={{ padding:"6px 12px", borderRadius:999, fontSize:13, fontWeight:700, border:"1px solid transparent",
+              ...(mode === k ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>{label}</button>
+          ))}
+        </div>
       </div>
-      {mode === "byName"
-        ? <ByNameTrends pg={data[g][profile]} names={names} profileName={data.profiles[profile] || "You"} />
-        : <CompareTrends data={data} gender={g} names={names} />}
+      {mode === "byName" && <ByNameTrends pg={data[g][profile]} names={names} profileName={data.profiles[profile] || "You"} />}
+      {mode === "compare" && <CompareTrends data={data} gender={g} names={names} />}
+      {mode === "agree" && <AgreementView data={data} gender={g} names={names} />}
+      {mode === "fam" && <FamVsUsView data={data} gender={g} names={names} />}
     </div>
   );
 }
