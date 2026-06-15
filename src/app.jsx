@@ -1459,8 +1459,8 @@ function ManageNames({ data, onRemove, onRestore }) {
 const LINE_COLORS = ["#2E4756","#C9821A","#566B36","#B5677B","#5B7493","#A4663A","#7A5BA6","#3A6EA5"];
 // Once the 8 theme colors are used, vary the stroke pattern to keep lines distinct.
 const DASHES = [null, "7 5", "1.5 4", "10 4 1.5 4"]; // solid, dashed, dotted, dash-dot
-function TrendChart({ lines, xUnit = "votes", emph = null }) {
-  const W = 600, H = 240, padL = 14, padR = 12, padT = 12, padB = 26;
+function TrendChart({ lines, xUnit = "votes", emph = null, endLabels = false }) {
+  const W = 600, H = 240, padL = 14, padR = endLabels ? 84 : 12, padT = 12, padB = 26;
   const allPts = lines.flatMap((l) => l.points);
   if (!allPts.length) return null;
   const xsAll = allPts.map((p) => p.x), ysAll = allPts.map((p) => p.y);
@@ -1507,6 +1507,14 @@ function TrendChart({ lines, xUnit = "votes", emph = null }) {
         {hx != null && lines.map((l) => {
           const v = valAt(l, hx); return v == null ? null : <circle key={l.id} cx={X(hx)} cy={Y(v)} r="3" fill={l.color} />;
         })}
+        {endLabels && (() => {
+          const labs = lines.map((l) => ({ id: l.id, name: l.name, color: l.color, y: Y(valAt(l, maxX) ?? START) })).sort((a, b) => a.y - b.y);
+          for (let i = 1; i < labs.length; i++) if (labs[i].y < labs[i - 1].y + 11) labs[i].y = labs[i - 1].y + 11;
+          return labs.map((lb) => (
+            <text key={lb.id} x={W - padR + 5} y={lb.y + 3} fontSize="9.5" fontWeight={emph === lb.id ? 800 : 600}
+              fill={lb.color} opacity={emph && emph !== lb.id ? 0.3 : 1}>{lb.name}</text>
+          ));
+        })()}
       </svg>
       {hx != null && (
         <div style={{ position:"absolute", top:8, left:48, background:C.bg, border:`1px solid ${C.line}`, borderRadius:8, padding:"6px 8px", fontSize:11, pointerEvents:"none" }}>
@@ -1547,19 +1555,22 @@ function ByNameTrends({ pg, names, profileName }) {
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
-        {profileName}’s rating over {pg.votes} votes. Showing the top {Math.min(5, ranked.length)} by default — tap any name to add or remove it; hover a name to highlight its line.
+        {profileName}’s rating over {pg.votes} votes. Showing the top {Math.min(5, ranked.length)} by default. The number is its current rank — tap a name to add or remove it, double-tap to solo it, or hover to highlight.
       </p>
-      <TrendChart lines={lines} emph={emph} />
+      <TrendChart lines={lines} emph={emph} endLabels />
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
-        {ranked.map((n) => {
+        <button onClick={() => setSel(ranked.slice(0, 5).map((n) => n.id))} className="lift"
+          style={{ fontSize:12, padding:"4px 12px", borderRadius:999, fontWeight:700, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>Top 5</button>
+        {ranked.map((n, i) => {
           const on = sel.includes(n.id); const st = styleOf(n.id);
           return (
-            <button key={n.id} onClick={() => toggle(n.id)}
+            <button key={n.id} onClick={() => toggle(n.id)} onDoubleClick={() => setSel([n.id])}
               onMouseEnter={() => on && setEmph(n.id)} onMouseLeave={() => setEmph((e) => (e === n.id ? null : e))}
               className="lift" style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600, border:"1px solid transparent",
               ...(on ? { background: st.color, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>
-              {on && st.dash && <span style={{ width:14, height:0, borderTop:`2px ${dashStyle(st.dash)} #fff` }} />}
+              <span style={{ opacity:0.6, fontWeight:700 }}>{i + 1}</span>
               {n.name}
+              {on && st.dash && <span style={{ width:14, height:0, borderTop:`2px ${dashStyle(st.dash)} #fff` }} />}
             </button>
           );
         })}
@@ -1610,7 +1621,7 @@ function Trends({ data, profile }) {
     <div>
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={setG} active={gColor} />
-        <Seg items={[["byName", "By name"], ["compare", "Everyone"]]} value={mode} onChange={setMode} />
+        <Seg items={[["byName", "By name"], ["compare", "By person"]]} value={mode} onChange={setMode} />
       </div>
       {mode === "byName"
         ? <ByNameTrends pg={data[g][profile]} names={names} profileName={data.profiles[profile] || "You"} />
