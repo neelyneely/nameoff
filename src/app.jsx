@@ -1263,7 +1263,11 @@ function LockMsg({ myVotes }) {
     <div style={{ borderRadius:12, padding:"40px 20px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
       <div style={{ display:"flex", justifyContent:"center", marginBottom:10 }}><Ic n="heart" s={26} c={C.line} /></div>
       <p style={{ fontSize:15, fontWeight:700, color:C.ink, margin:"0 0 4px" }}>Vote first to unlock this</p>
-      <p style={{ fontSize:13, margin:0 }}>Cast {left} more {left === 1 ? "matchup" : "matchups"} ({myVotes}/{UNLOCK_VOTES}) and Rankings &amp; Trends open up.</p>
+      <p style={{ fontSize:13, margin:"0 0 12px" }}>Just {left} more {left === 1 ? "matchup" : "matchups"} to go — then Rankings &amp; Trends open up. 🌱</p>
+      <div style={{ maxWidth:220, margin:"0 auto", height:8, borderRadius:999, background:C.line, overflow:"hidden" }}>
+        <div style={{ height:8, borderRadius:999, width:`${Math.min(100, (myVotes / UNLOCK_VOTES) * 100)}%`, background:C.sage, transition:"width .3s ease" }} />
+      </div>
+      <p style={{ fontSize:11, margin:"6px 0 0", color:C.muted }}>{myVotes}/{UNLOCK_VOTES}</p>
     </div>
   );
 }
@@ -1806,8 +1810,27 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onStar, onRemove, 
   const options = [{ key: "combined", name: "Neely Stevenson" }, { key: "everyone", name: "Fam and Friends" }];
   const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage stars/notes on the couple's ranking only
   const tabColor = (k) => (k === "combined" ? C.teal : C.sage);
+  // Names BOTH Claire and Andrew have starred — the shared favorites.
+  const bothLove = ["girl", "boy"].flatMap((g) => {
+    const cs = new Set(data[g].claire.starred || []), as_ = new Set(data[g].andrew.starred || []);
+    return namesFor(g, data.custom, data.removed).filter((n) => cs.has(n.id) && as_.has(n.id)).map((n) => ({ ...n, g }));
+  });
   return (
     <div>
+      {bothLove.length > 0 && (
+        <div style={{ marginBottom:14, padding:"12px 14px", borderRadius:14, background:`${C.ochre}14`, border:`1px solid ${C.ochre}66` }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.06em", color:C.ochre, marginBottom:8 }}>
+            <Ic n="heart" s={14} c={C.ochre} fill={C.ochre} /> Names you both love
+          </div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {bothLove.map((n) => (
+              <span key={n.g + n.id} style={{ display:"flex", alignItems:"center", gap:6, fontFamily:DISPLAY, fontSize:16, fontWeight:700, color:C.ink, padding:"5px 12px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}` }}>
+                {n.name}<span style={{ width:8, height:8, borderRadius:999, background:gColor(n.g) }} />
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
         {options.map((o) => (
           <button key={o.key} onClick={() => setMode(o.key)} className="lift" style={{ flex:"1 1 auto", padding:"7px 12px", borderRadius:8, fontSize:14, fontWeight:700,
