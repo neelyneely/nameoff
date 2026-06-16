@@ -5,7 +5,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 const C = {
   bg:"#E6D9BC", paper:"#F4EBD3", ink:"#2C2114", muted:"#6E5C40", line:"#D2C49E",
   teal:"#2E4756", ochre:"#C9821A", sage:"#566B36", clay:"#A4663A",
-  // Per-person identity colors — used everywhere a person's data is shown.
+  // Per-person identity colors, used everywhere a person's data is shown.
   claire:"#C9821A", andrew:"#3F6CA3",
   // Per-gender identity + soft background tints for the Vote banner / Rankings.
   girl:"#B5677B", boy:"#5B7493", girlTint:"#EFE0E2", boyTint:"#DFE6EC",
@@ -99,7 +99,7 @@ const HISTORY_CAP = 200;
  * SSA only ranks the top 1000 per sex. Fill these in from ssa.gov/oact/babynames.
  * Seeded with Sloane (girl) as the working example. */
 const POP = {
-  // boys — formal bracket names
+  // boys: formal bracket names
   finnegan:   { boy: { 2020:409, 2021:378, 2022:446, 2023:491, 2024:494, 2025:526 } },
   sean:       { boy: { 2020:334, 2021:362, 2022:397, 2023:427, 2024:435, 2025:489 } },
   keegan:     { boy: { 2020:496, 2021:492, 2022:566, 2023:627, 2024:593, 2025:621 } },
@@ -268,7 +268,7 @@ function popSeries(id, gender) {
 /* ------------------------------- storage --------------------------------- */
 const SB_URL_KEY = "nameoff_sb_url";
 const SB_KEY_KEY = "nameoff_sb_key";
-// Baked-in shared config: anyone opening the app auto-connects — no pasting needed.
+// Baked-in shared config: anyone opening the app auto-connects, no pasting needed.
 // (Publishable key is client-safe by design; access is still governed by the table's RLS policies.)
 const DEFAULT_URL = "https://wjyxrdyknopxevvydmdh.supabase.co";
 const DEFAULT_KEY = "sb_publishable_41Rep4y244JEtrBHUAGWRw_-jKxxEzO";
@@ -454,7 +454,7 @@ function App() {
       const gen = genRef.current;
       try {
         const map = await store.getAll();
-        // A local change happened while we were fetching — don't clobber it with stale data.
+        // A local change happened while we were fetching, don't clobber it with stale data.
         if (savingRef.current || genRef.current !== gen) return;
         const d = assemble(map);
         dataRef.current = d; setData(d);
@@ -1286,7 +1286,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
 
   const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
   const cVoted = cVotes > 0, aVoted = aVotes > 0;
-  // A profile that hasn't voted sits at START for every name — that's not a real
+  // A profile that hasn't voted sits at START for every name, which isn't a real
   // opinion, so don't blend it in. Only combine the two once BOTH have voted.
   const combineBoth = cVoted && aVoted;
 
@@ -1299,7 +1299,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
         return { n, score: avg, c: cRank[n.id], a: aRank[n.id], split };
       });
     } else {
-      // Only one has voted — show their ratings alone, no C#/A# split badge
+      // Only one has voted, so show their ratings alone, no C#/A# split badge
       // (the other has no real ranking yet).
       const soloR = cVoted ? cR : aR;
       rows = names.map((n) => ({ n, score: soloR[n.id] ?? START }));
@@ -1540,7 +1540,7 @@ function ByNameTrends({ pg, names, profileName, gender }) {
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
-        {profileName}’s combined ranking over {pg.votes} votes. Showing the top {Math.min(5, ranked.length)} by default — the number is each name’s current rank. Tap to add or remove, double-tap to solo, hover to highlight.
+        {profileName}’s combined ranking over {pg.votes} votes.
       </p>
       <TrendChart lines={lines} emph={emph} endLabels />
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
@@ -1581,7 +1581,7 @@ function CompareTrends({ data, gender, names }) {
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
-How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> over time — you, Andrew, and family each get a line. Pick a name below.
+How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> over time. You, Andrew, and family each get a line. Pick a name below.
       </p>
       <TrendChart lines={lines} />
       <div style={{ display:"flex", gap:14, marginTop:8, fontSize:11, color:C.muted, flexWrap:"wrap" }}>
@@ -1688,7 +1688,7 @@ function combinePg(data, gender, names) {
 function Trends({ data, profile }) {
   const [mode, setMode] = useState("byName");
   const [g, setG] = useState("girl");
-  // Drop names vetoed by either owner — vetoed names shouldn't appear anywhere in Trends.
+  // Drop names vetoed by either owner; vetoed names shouldn't appear anywhere in Trends.
   const vetoed = new Set([...data[g].claire.vetoed, ...data[g].andrew.vetoed]);
   const names = namesFor(g, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
   const modes = [["byName","Compare names"],["compare","Compare voters"],["agree","Agreement"],["fam","Fam vs us"]];
