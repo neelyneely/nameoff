@@ -1491,7 +1491,7 @@ function fmtRank(rank, approx, compact) {
   if (rank == null) return compact ? "1000+" : "Outside top 1000";
   return (approx ? "≈#" : "#") + rank;
 }
-function PopLine({ id, gender, compact = false, noChart = false }) {
+function PopLine({ id, gender, compact = false, noChart = false, meaningShown = false }) {
   const popMode = React.useContext(PopModeCtx);
   const [open, setOpen] = React.useState(false);
   const uni = UNISEX_IDS.has(id);
@@ -1516,7 +1516,7 @@ function PopLine({ id, gender, compact = false, noChart = false }) {
     sparkGender = uc.dom;
     sparkApprox = true;
   }
-  const hasBreakdown = fp.hasVar || (compact && (fp.nicks.length > 0 || !!MEANING[id]));
+  const hasBreakdown = fp.hasVar || (compact && (fp.nicks.length > 0 || (!!MEANING[id] && !meaningShown)));
   const cell = (r, p, approx) => popMode === "pct"
     ? (fmtPct(p) || (r == null ? "1000+" : "n/a"))
     : fmtRank(r, approx, true);
@@ -1643,7 +1643,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar, add
           : <span style={{ fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</span>}
       </div>
       <div style={{ minHeight:36, marginTop:6, fontSize:12.5, color:C.muted, fontStyle:"italic", lineHeight:1.4 }}>{MEANING[n.id] ? cleanMeaning(MEANING[n.id]) : ""}</div>
-      <div style={{ minHeight:15, fontSize:11, fontWeight:600, color:C.sage }}>{n.byName ? `✨ suggested by ${n.byName}` : ""}</div>
+      <div style={{ minHeight:15, fontSize:11, fontWeight:600, color:C.sage }}>{(n.byName && !isOwner(n.by)) ? `✨ suggested by ${n.byName}` : ""}</div>
       <div style={{ minHeight:88, marginTop:6, display:"flex", justifyContent:"center", alignItems:"center" }}>
         {fp ? <PopLine id={n.id} gender={gender} />
             : <span style={{ fontSize:11, fontStyle:"italic", color:C.muted }}>Popularity &amp; meaning pending</span>}
@@ -2001,7 +2001,7 @@ function NameChip({ n, added, gender, profile, onVeto, onRemove, onAddNick, onRe
     <li style={{ display:"flex", flexDirection:"column", gap:5, borderRadius:12, padding:"6px 8px 7px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
         <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{n.name}</span>
-        {n.custom && <span style={{ fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{n.byName ? `added by ${n.byName}` : "added"}</span>}
+        {n.custom && <span style={{ fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{(n.byName && !isOwner(n.by)) ? `added by ${n.byName}` : "added"}</span>}
         <span style={{ flex:1 }} />
         <button onClick={() => onVeto(gender, profile, n.id)} className="lift" aria-label={`Veto ${n.name}`} title="Veto — your hard no"
           style={{ display:"flex", alignItems:"center", padding:2, borderRadius:999, color:C.clay }}><Ic n="ban" s={12} /></button>
@@ -2525,7 +2525,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                       <span key={s} style={{ fontSize:10.5, color:C.muted, background:C.bg, borderRadius:999, padding:"1px 7px" }}>{s}</span>
                     ))}
                   </div>
-                  <PopLine id={c.id} gender={g} compact />
+                  <PopLine id={c.id} gender={g} compact meaningShown />
                 </div>
                 <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"stretch", gap:6 }}>
                   <button onClick={() => add(item)} className="lift"
