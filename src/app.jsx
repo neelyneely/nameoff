@@ -1775,9 +1775,8 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
             <PopLine id={r.n.id} gender={gender} compact noChart />
           </div>
           <div style={{ minHeight:16, marginTop:2 }}>
-            {readOnly
-              ? <span style={{ fontSize:12, color:C.muted }}>{r.n.nicks.length > 0 ? r.n.nicks.join(" · ") : ""}</span>
-              : <NickEditor id={r.n.id} nicks={r.n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />}
+            {/* Nicknames are editable by anyone in any view (not tied to the star/note readOnly gate). */}
+            <NickEditor id={r.n.id} nicks={r.n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
           </div>
           <div style={{ height:6, borderRadius:999, marginTop:6, background:C.line }}>
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
