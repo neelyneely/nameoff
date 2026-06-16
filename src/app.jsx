@@ -1517,7 +1517,7 @@ const trendEmpty = (msg) => (
     <p style={{ fontSize:14, margin:0 }}>{msg}</p>
   </div>
 );
-function ByNameTrends({ pg, names, profileName }) {
+function ByNameTrends({ pg, names, profileName, gender }) {
   const ranked = [...names].sort((a, b) => (pg.ratings[b.id] ?? START) - (pg.ratings[a.id] ?? START));
   // Stable color + pattern per name (by its rank position): first 8 are solid theme
   // colors, then the same colors with dashed / dotted / dash-dot strokes.
@@ -1525,6 +1525,8 @@ function ByNameTrends({ pg, names, profileName }) {
   const styleOf = (id) => styleFor(Math.max(0, ranked.findIndex((n) => n.id === id)));
   const [sel, setSel] = useState(() => ranked.slice(0, 5).map((n) => n.id)); // top 5 by default
   const [emph, setEmph] = useState(null);
+  // Reset to the top 5 whenever the gender (name set) changes, so a toggle never carries old names over.
+  useEffect(() => { setSel(ranked.slice(0, 5).map((n) => n.id)); setEmph(null); }, [gender]); // eslint-disable-line
   if (!pg.history || pg.history.length < 2) return trendEmpty("Vote on a few names to start the trend lines.");
   const lines = sel.map((id) => {
     const st = styleOf(id);
@@ -1699,7 +1701,7 @@ function Trends({ data, profile }) {
           ))}
         </div>
       </div>
-      {mode === "byName" && <ByNameTrends key={g} pg={combinePg(data, g, names)} names={names} profileName={"Claire & Andrew"} />}
+      {mode === "byName" && <ByNameTrends key={g} gender={g} pg={combinePg(data, g, names)} names={names} profileName={"Claire & Andrew"} />}
       {mode === "compare" && <CompareTrends data={data} gender={g} names={names} />}
       {mode === "agree" && <AgreementView data={data} gender={g} names={names} />}
       {mode === "fam" && <FamVsUsView data={data} gender={g} names={names} />}
