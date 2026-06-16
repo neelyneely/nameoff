@@ -1600,7 +1600,7 @@ How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> ove
 }
 // Scatter that plots each name by two rank maps, with named directional axes:
 // further right = more loved on the x axis, higher = more loved on the y axis.
-function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = C.ink, midColor = C.sage }) {
+function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = C.ink, midColor = C.sage, xLabel = `${xName} loves`, yLabel = `${yName} loves` }) {
   const pts = names.map((n) => ({ n, x: xr[n.id], y: yr[n.id] })).filter((p) => p.x != null && p.y != null);
   if (pts.length < 2) return trendEmpty("Not enough names ranked yet.");
   const N = Math.max(names.length, 2);
@@ -1618,8 +1618,8 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
         <line x1={padL} y1={padT} x2={padL} y2={S - padB} stroke={C.line} strokeWidth="1.5" />
         <line x1={padL} y1={S - padB} x2={S - padR} y2={S - padB} stroke={C.line} strokeWidth="1.5" />
         {/* axis labels: the "loves it" direction */}
-        <text x={padL} y={padT - 7} textAnchor="start" fontSize="11.5" fontWeight="800" fill={yColor}>↑ {yName} loves</text>
-        <text x={S - padR} y={S - padB + 20} textAnchor="end" fontSize="11.5" fontWeight="800" fill={xColor}>{xName} loves →</text>
+        <text x={padL} y={padT - 7} textAnchor="start" fontSize="11.5" fontWeight="800" fill={yColor}>↑ {yLabel}</text>
+        <text x={S - padR} y={S - padB + 20} textAnchor="end" fontSize="11.5" fontWeight="800" fill={xColor}>{xLabel} →</text>
         {pts.map((p) => {
           const col = dotColor(p.x, p.y);
           return (
@@ -1659,10 +1659,11 @@ function FamVsUsView({ data, gender, names }) {
     fam[n.id] = voted.reduce((s, k) => s + (data[gender][k].ratings[n.id] ?? START), 0) / voted.length;
   });
   const xr = ranksOf(couple, names), yr = ranksOf(fam, names);
+  const coupleColor = "#E3B23C", famColor = "#3F6CA3"; // yellow = Andrew & Claire, blue = fam & friends, green = overlap
   return (
     <div>
-      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>Each name by <b style={{ color:C.teal }}>your</b> combined rank (further right = you two love it) and the <b style={{ color:C.sage }}>family</b>’s rank (higher = they love it). Opposite corners are where you and the family disagree.</p>
-      <ScatterCompare names={names} xr={xr} yr={yr} xName="You two" yName="Family" xColor={C.teal} yColor={C.sage} agreeColor={C.ochre} passColor={C.clay} />
+      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>Each name by <b style={{ color:coupleColor }}>Andrew &amp; Claire</b>’s combined rank (further right = they love it) and the <b style={{ color:famColor }}>fam &amp; friends</b>’ rank (higher = they love it). Opposite corners are where you two and everyone else disagree.</p>
+      <ScatterCompare names={names} xr={xr} yr={yr} xName="Andrew &amp; Claire" yName="Fam &amp; friends" xLabel="Andrew and Claire love" yLabel="Fam &amp; friends love" xColor={coupleColor} yColor={famColor} midColor={C.sage} />
     </div>
   );
 }
