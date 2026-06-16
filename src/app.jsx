@@ -277,7 +277,7 @@ const FEAT = {
 const C0 = (gender, id, name, nicks, o, s, end, syl, rank, m) => ({ gender, id, name, nicks, o, s, end, syl, rank, m });
 const CANDS = [
   // girls
-  C0("girl","greer","Greer",[],"sc",["sur","pun"],"r",1,{girl:980},"Scottish · watchful, guardian"),
+  C0("girl","greer","Greer",[],"sc",["sur","pun"],"r",1,{girl:null},"Scottish · watchful, guardian"),
   C0("girl","maren","Maren",[],"no",["lyr"],"n",2,{girl:680},"Scandinavian · of the sea"),
   C0("girl","della","Della",["Dell"],"en",["vin","lyr"],"a",2,{girl:820},"English · noble, bright"),
   C0("girl","iris","Iris",[],"gr",["nat","vin"],"s",2,{girl:115},"Greek · rainbow; the flower"),
@@ -287,16 +287,16 @@ const CANDS = [
   C0("girl","sigrid","Sigrid",["Siri","Sig"],"no",["vin","pun"],"d",2,{girl:null},"Norse · victory and beauty"),
   C0("girl","esme","Esme",[],"fr",["lyr","vin","lit"],"y",2,{girl:610},"French · esteemed, beloved"),
   C0("girl","marigold","Marigold",["Goldie","Mari"],"en",["nat","vin"],"d",3,{girl:null},"English · the golden marigold flower"),
-  C0("girl","bryn","Bryn",[],"we",["pun","sur"],"n",1,{girl:820},"Welsh · hill, mound"),
+  C0("girl","bryn","Bryn",[],"we",["pun","sur"],"n",1,{girl:null},"Welsh · hill, mound"),
   C0("girl","tegan","Tegan",[],"we",["lyr","sur"],"n",2,{girl:null},"Welsh · fair, lovely"),
   C0("girl","eira","Eira",[],"we",["nat","lyr"],"a",2,{girl:null},"Welsh · snow"),
   C0("girl","elowen","Elowen",["Elo","Winnie"],"co",["lyr","nat"],"n",3,{girl:null},"Cornish · elm tree"),
   C0("girl","maisie","Maisie",[],"sc",["vin","lyr"],"y",2,{girl:520},"Scottish · pearl; pet form of Margaret"),
   C0("girl","nora","Nora",[],"ir",["vin","lyr"],"a",2,{girl:32},"Irish · light, honor"),
   C0("girl","saoirse","Saoirse",["Sersh"],"ir",["lyr","lit"],"a",2,{girl:710},"Irish · freedom"),
-  C0("girl","maple","Maple",[],"en",["nat"],"l",2,{girl:690},"English · the maple tree"),
+  C0("girl","maple","Maple",[],"en",["nat"],"l",2,{girl:null},"English · the maple tree"),
   C0("girl","thea","Thea",[],"gr",["lyr","vin"],"a",2,{girl:200},"Greek · goddess; divine"),
-  C0("girl","wilder","Wilder",[],"en",["sur","nat","pun"],"r",2,{girl:900},"English · untamed, wild"),
+  C0("girl","wilder","Wilder",[],"en",["sur","nat","pun"],"r",2,{girl:null},"English · untamed, wild"),
   // boys
   C0("boy","soren","Soren",["Sory"],"no",["lyr","sur"],"n",2,{boy:500},"Danish · stern; form of Severus"),
   C0("boy","ames","Ames",[],"en",["sur","pun"],"s",1,{boy:null},"English · friend"),
@@ -304,7 +304,7 @@ const CANDS = [
   C0("boy","bodhi","Bodhi",[],"sk",["nat","lyr"],"y",2,{boy:280},"Sanskrit · awakening, enlightenment"),
   C0("boy","linus","Linus",["Lin"],"gr",["vin","lit"],"s",2,{boy:null},"Greek · flax; the mythic musician"),
   C0("boy","thorne","Thorne",[],"en",["sur","nat","pun"],"n",1,{boy:null},"English · thorn bush"),
-  C0("boy","cormac","Cormac",["Mac","Cory"],"ir",["pun","vin"],"k",2,{boy:820},"Irish · charioteer; raven's son"),
+  C0("boy","cormac","Cormac",["Mac","Cory"],"ir",["pun","vin"],"k",2,{boy:null},"Irish · charioteer; raven's son"),
   C0("boy","bowen","Bowen",["Bo"],"we",["sur","lyr"],"n",2,{boy:350},"Welsh · son of Owen"),
   C0("boy","brennan","Brennan",[],"ir",["sur"],"n",2,{boy:690},"Irish · descendant of the brave one"),
   C0("boy","tiernan","Tiernan",["Tiern"],"ir",["sur","lyr"],"n",3,{boy:null},"Irish · little lord"),
@@ -345,27 +345,50 @@ const SAY = {
   della:"DEL-ah", iris:"EYE-riss", nora:"NOR-ah", linus:"LY-nəs", arlo:"AR-loh", emmett:"EM-it",
   everett:"EV-rit", emerson:"EM-er-sən", ellison:"EL-ih-sən", indigo:"IN-dih-goh", marigold:"MARE-ih-gold",
 };
-// Approximate recent SSA rank trajectories for the popular candidates, so the For-you
-// popularity chart shows a real trend. NOTE: estimates for the suggestion pool only —
-// roster names keep their verified data (these never overwrite an existing entry).
+// Real SSA national rank trajectories (2020–2025) for the candidate pool, parsed
+// from the official "Popular Baby Names" tables. null = outside the top 1000 that
+// year. Folded in non-destructively, so roster names keep their own verified data.
 const CSERIES = {
-  iris:    { girl:{ 2020:135,2021:130,2022:127,2023:119,2024:118,2025:115 } },
-  juniper: { girl:{ 2020:267,2021:252,2022:250,2023:248,2024:244,2025:240 } },
-  nora:    { girl:{ 2020:30, 2021:32, 2022:34, 2023:35, 2024:33, 2025:32 } },
-  thea:    { girl:{ 2020:286,2021:262,2022:243,2023:222,2024:208,2025:200 } },
-  esme:    { girl:{ 2020:980,2021:880,2022:790,2023:720,2024:660,2025:610 } },
-  saoirse: { girl:{ 2020:980,2021:905,2022:835,2023:780,2024:740,2025:710 } },
-  silas:   { boy: { 2020:100,2021:99, 2022:96, 2023:97, 2024:101,2025:100 } },
-  everett: { boy: { 2020:96, 2021:91, 2022:86, 2023:83, 2024:81, 2025:80 } },
-  emmett:  { boy: { 2020:139,2021:135,2022:132,2023:133,2024:134,2025:135 } },
-  arlo:    { boy: { 2020:302,2021:255,2022:222,2023:204,2024:190,2025:180 } },
-  ronan:   { boy: { 2020:332,2021:322,2022:330,2023:338,2024:341,2025:340 } },
-  cassius: { boy: { 2020:430,2021:400,2022:380,2023:365,2024:355,2025:350 } },
-  soren:   { boy: { 2020:560,2021:540,2022:520,2023:510,2024:505,2025:500 } },
-  bodhi:   { boy: { 2020:400,2021:350,2022:320,2023:300,2024:288,2025:280 } },
-  quinn:   { girl:{ 2020:97, 2021:90, 2022:85, 2023:82, 2024:81, 2025:80 }, boy:{ 2020:380,2021:400,2022:410,2023:415,2024:418,2025:420 } },
-  emerson: { girl:{ 2020:182,2021:165,2022:158,2023:152,2024:151,2025:150 }, boy:{ 2020:360,2021:380,2022:392,2023:398,2024:400,2025:400 } },
-  sage:    { girl:{ 2020:280,2021:262,2022:252,2023:246,2024:242,2025:240 }, boy:{ 2020:640,2021:630,2022:625,2023:622,2024:621,2025:620 } },
+  // girls
+  maren:    { girl:{ 2020:438,2021:441,2022:502,2023:545,2024:569,2025:472 } },
+  della:    { girl:{ 2020:916,2021:710,2022:660,2023:645,2024:580,2025:563 } },
+  iris:     { girl:{ 2020:127,2021:107,2022:84, 2023:78, 2024:72, 2025:61 } },
+  romy:     { girl:{ 2020:null,2021:null,2022:null,2023:null,2024:928,2025:698 } },
+  juniper:  { girl:{ 2020:171,2021:137,2022:113,2023:113,2024:111,2025:100 } },
+  esme:     { girl:{ 2020:395,2021:376,2022:304,2023:325,2024:343,2025:298 } },
+  marigold: { girl:{ 2020:null,2021:null,2022:826,2023:713,2024:690,2025:590 } },
+  elowen:   { girl:{ 2020:null,2021:null,2022:null,2023:null,2024:898,2025:798 } },
+  maisie:   { girl:{ 2020:410,2021:406,2022:347,2023:294,2024:256,2025:233 } },
+  nora:     { girl:{ 2020:30, 2021:27, 2022:28, 2023:24, 2024:22, 2025:20 } },
+  saoirse:  { girl:{ 2020:735,2021:812,2022:894,2023:959,2024:null,2025:null } },
+  thea:     { girl:{ 2020:303,2021:314,2022:300,2023:321,2024:349,2025:353 } },
+  // boys
+  soren:    { boy:{ 2020:509,2021:536,2022:533,2023:541,2024:571,2025:464 } },
+  cassius:  { boy:{ 2020:488,2021:487,2022:549,2023:576,2024:569,2025:583 } },
+  bodhi:    { boy:{ 2020:295,2021:284,2022:300,2023:294,2024:301,2025:265 } },
+  bowen:    { boy:{ 2020:395,2021:368,2022:390,2023:349,2024:321,2025:266 } },
+  brennan:  { boy:{ 2020:764,2021:872,2022:995,2023:null,2024:null,2025:null } },
+  sutton:   { boy:{ 2020:580,2021:542,2022:527,2023:446,2024:442,2025:332 } },
+  thatcher: { boy:{ 2020:845,2021:815,2022:966,2023:null,2024:null,2025:null } },
+  lochlan:  { boy:{ 2020:729,2021:792,2022:806,2023:824,2024:777,2025:644 } },
+  emmett:   { boy:{ 2020:107,2021:103,2022:116,2023:117,2024:119,2025:121 } },
+  ronan:    { boy:{ 2020:270,2021:274,2022:266,2023:290,2024:257,2025:247 } },
+  desmond:  { boy:{ 2020:361,2021:354,2022:363,2023:399,2024:368,2025:376 } },
+  silas:    { boy:{ 2020:100,2021:91, 2022:87, 2023:80, 2024:81, 2025:71 } },
+  everett:  { boy:{ 2020:90, 2021:83, 2022:81, 2023:89, 2024:85, 2025:77 } },
+  cassian:  { boy:{ 2020:null,2021:969,2022:938,2023:529,2024:617,2025:479 } },
+  arlo:     { boy:{ 2020:220,2021:190,2022:169,2023:158,2024:146,2025:148 } },
+  magnus:   { boy:{ 2020:801,2021:730,2022:774,2023:763,2024:747,2025:765 } },
+  // unisex
+  ellis:    { girl:{ 2020:618,2021:597,2022:699,2023:752,2024:697,2025:682 }, boy:{ 2020:326,2021:320,2022:307,2023:275,2024:273,2025:243 } },
+  arden:    { girl:{ 2020:null,2021:null,2022:null,2023:null,2024:null,2025:975 }, boy:{ 2020:null,2021:null,2022:null,2023:null,2024:942,2025:null } },
+  reese:    { girl:{ 2020:146,2021:148,2022:168,2023:174,2024:190,2025:192 }, boy:{ 2020:733,2021:703,2022:647,2023:632,2024:621,2025:603 } },
+  quinn:    { girl:{ 2020:84, 2021:81, 2022:73, 2023:86, 2024:96, 2025:97 }, boy:{ 2020:439,2021:407,2022:444,2023:452,2024:497,2025:467 } },
+  emerson:  { girl:{ 2020:155,2021:168,2022:170,2023:161,2024:151,2025:122 }, boy:{ 2020:268,2021:277,2022:274,2023:268,2024:270,2025:254 } },
+  sage:     { girl:{ 2020:223,2021:177,2022:143,2023:142,2024:146,2025:160 }, boy:{ 2020:436,2021:422,2022:387,2023:419,2024:414,2025:456 } },
+  ellison:  { girl:{ 2020:906,2021:839,2022:null,2023:null,2024:null,2025:null } },
+  indigo:   { girl:{ 2020:null,2021:901,2022:979,2023:961,2024:921,2025:854 } },
+  ocean:    { girl:{ 2020:null,2021:871,2022:755,2023:823,2024:832,2025:787 }, boy:{ 2020:795,2021:712,2022:596,2023:609,2024:592,2025:720 } },
 };
 // Derive the candidate roster + fold candidate features/meanings/popularity into
 // the shared maps so an added candidate behaves like any other name.
@@ -922,6 +945,15 @@ function App() {
     dataRef.current = next; setData(next);
     save({ custom: next.custom });
   };
+  // Record the current viewer as the person who added a name (used by the
+  // "claim this contribution" button on names whose author wasn't tracked).
+  const claimName = (id) => {
+    const next = clone(dataRef.current);
+    const byName = (next.profiles && next.profiles[profile]) || PROFILES[profile] || profile || "";
+    next.custom = (next.custom || []).map((c) => c.id === id ? { ...c, by: profile, byName } : c);
+    dataRef.current = next; setData(next);
+    save({ custom: next.custom });
+  };
   const removeCustom = (id) => {
     const next = clone(dataRef.current);
     next.custom = (next.custom || []).filter((c) => c.id !== id);
@@ -1092,7 +1124,7 @@ function App() {
       {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
         starred={pg.starred || []} onStar={(id) => toggleStar(voteGender, id)} onBack={goBack} canGoBack={canGoBack} profile={profile} />}
       {view === "rankings" && (unlocked
-        ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} onAddNick={addNick} onRemoveNick={removeNick} notes={data.notes} onSetNote={setNote} />
+        ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} onAddNick={addNick} onRemoveNick={removeNick} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
       {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} />}
       {view === "trends" && (unlocked
@@ -1612,11 +1644,20 @@ function NoteBlock({ id, notes, profile, onSetNote }) {
     </div>
   );
 }
-function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, starOn, both, onStar, onVeto, notes, onSetNote }) {
+// Attribution tag for a custom name in the rankings. Owners (Claire/Andrew) and
+// built-in names show nothing; a guest who added it shows "added by X"; a name with
+// no recorded author offers a claim button so the real adder can take credit.
+function nameAttrib(n) {
+  if (!n.custom || (n.by && isOwner(n.by))) return { kind: "none" };
+  if (n.by) return { kind: "guest", name: n.byName || n.by };
+  return { kind: "unknown" };
+}
+function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, starOn, both, onStar, onVeto, onClaim, notes, onSetNote }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
   const noteCount = notes[r.n.id] ? Object.keys(notes[r.n.id]).length : 0;
+  const attr = nameAttrib(r.n);
   return (
     <li style={{ borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${both ? C.ochre : C.line}` }}>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -1624,7 +1665,8 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span className="disp" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{r.n.name}</span>
-            {r.n.custom && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{r.n.byName ? `added by ${r.n.byName}` : "added"}</span>}
+            {attr.kind === "guest" && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added by {attr.name}</span>}
+            {attr.kind === "unknown" && <button onClick={() => onClaim(r.n.id)} className="lift" style={{ fontSize:10, fontWeight:700, padding:"1px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.teal }}>claim this contribution</button>}
             {both && <span style={{ fontSize:10, fontWeight:700, padding:"1px 6px", borderRadius:999, background:`${C.ochre}1A`, color:C.ochre }}>★ both</span>}
             {showCombo && r.c != null && (
               <span style={{ fontSize:10, fontWeight:600, padding:"1px 6px", borderRadius:999, background: r.split ? `${C.clay}1A` : C.line }}>
@@ -1660,7 +1702,7 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
     </li>
   );
 }
-function Rankings({ data, profile, onUnveto, onVeto, onStar, onRemove, onRestore, onAddNick, onRemoveNick, notes, onSetNote }) {
+function Rankings({ data, profile, onUnveto, onVeto, onClaim, onStar, onRemove, onRestore, onAddNick, onRemoveNick, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
   // Two rankings: the couple's combined (with agreement/disparity), and the family
   // pool (everyone who isn't Claire or Andrew). No individual tabs.
@@ -1676,14 +1718,14 @@ function Rankings({ data, profile, onUnveto, onVeto, onStar, onRemove, onRestore
         ))}
       </div>
       <div className="twocol">
-        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onStar={onStar} />
-        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onStar={onStar} />
+        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onStar={onStar} />
+        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onStar={onStar} />
       </div>
       {isOwner(profile) && <ManageNames data={data} profile={profile} onRemove={onRemove} onRestore={onRestore} onVeto={onVeto} onUnveto={onUnveto} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />}
     </div>
   );
 }
-function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes, onSetNote, onUnveto, onVeto, onStar }) {
+function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes, onSetNote, onUnveto, onVeto, onClaim, onStar }) {
   notes = notes || {};
   const names = namesFor(gender, data.custom, data.removed);
   const cR = data[gender].claire.ratings, aR = data[gender].andrew.ratings;
@@ -1706,7 +1748,6 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const cMatch = data[gender].claire.matches || {}, aMatch = data[gender].andrew.matches || {};
   // "Not yet voted on" (combined view only): neither owner has seen it in a matchup yet.
   const notVotedYet = (id) => isCombined && (cMatch[id] || 0) === 0 && (aMatch[id] || 0) === 0;
-  const suggesterOf = (id) => { const c = (data.custom || []).find((x) => x.id === id); return c ? (c.byName || (c.by && data.profiles[c.by]) || null) : null; };
 
   const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
   const cVoted = cVotes > 0, aVoted = aVotes > 0;
@@ -1774,7 +1815,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
-            profile={profile} readOnly={readOnly} starOn={myStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} onVeto={(id) => onVeto(gender, profile, id)} notes={notes} onSetNote={onSetNote} />
+            profile={profile} readOnly={readOnly} starOn={myStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} onVeto={(id) => onVeto(gender, profile, id)} onClaim={onClaim} notes={notes} onSetNote={onSetNote} />
         ))}
       </ol>
       {unvoted.length > 0 && (
@@ -1784,13 +1825,16 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
           </div>
           <ul style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {unvoted.map((r) => {
-              const sug = suggesterOf(r.n.id);
+              const attr = nameAttrib(r.n);
               return (
                 <li key={r.n.id} style={{ borderRadius:12, padding:"8px 12px", display:"flex", alignItems:"center", gap:12, background:C.paper, border:`1px dashed ${C.line}`, opacity:0.85 }}>
                   <div style={{ flex:1, minWidth:0 }}>
                     <span className="disp" style={{ fontSize:16, fontWeight:700, color:C.ink }}>{r.n.name}</span>
-                    {sug && <span style={{ fontSize:10, marginLeft:8, color:C.sage }}>suggested by {sug}</span>}
+                    {attr.kind === "guest" && <span style={{ fontSize:10, marginLeft:8, color:C.sage }}>added by {attr.name}</span>}
                   </div>
+                  {attr.kind === "unknown" && (
+                    <button onClick={() => onClaim(r.n.id)} className="lift" style={{ fontSize:11, fontWeight:700, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.teal, whiteSpace:"nowrap" }}>claim this contribution</button>
+                  )}
                 </li>
               );
             })}
