@@ -750,6 +750,48 @@ const ranksOf = (ratings, names) =>
 
 const store = makeStore();
 
+// A quick burst of falling confetti. Pure DOM so it works from any handler;
+// respects reduced-motion and cleans itself up.
+function fireConfetti(n = 44) {
+  try {
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const wrap = document.createElement("div");
+    wrap.className = "no-confetti";
+    const colors = ["#C9821A", "#566B36", "#B5677B", "#3F6CA3", "#A4663A", "#2E4756", "#E0B23C"];
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement("i");
+      p.style.left = (Math.random() * 100) + "vw";
+      p.style.background = colors[i % colors.length];
+      p.style.setProperty("--d", (1.5 + Math.random() * 1.3) + "s");
+      p.style.setProperty("--r", (Math.random() * 900 - 200) + "deg");
+      p.style.animationDelay = (Math.random() * 0.35) + "s";
+      if (i % 3 === 0) p.style.borderRadius = "50%";
+      wrap.appendChild(p);
+    }
+    document.body.appendChild(wrap);
+    setTimeout(() => wrap.remove(), 3200);
+  } catch {}
+}
+// Transient celebration overlay (couple match, vote milestones). Auto-dismisses.
+function Celebrate({ data, onClose }) {
+  React.useEffect(() => {
+    if (!data) return;
+    const t = setTimeout(onClose, data.match ? 2700 : 2200);
+    return () => clearTimeout(t);
+  }, [data]); // eslint-disable-line
+  if (!data) return null;
+  return (
+    <div className="no-cele" onClick={onClose}>
+      <div>
+        <div style={{ fontSize: 36, lineHeight: 1, marginBottom: 6 }}>{data.emoji || "🎉"}</div>
+        <div className="disp" style={{ fontSize: 24, fontWeight: 800, color: C.ink }}>{data.title}</div>
+        {data.sub && <div style={{ fontFamily: DISPLAY, fontSize: data.match ? 30 : 16, fontWeight: 800, color: C.ochre, marginTop: 6 }}>{data.sub}</div>}
+        {data.note && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 6 }}>{data.note}</div>}
+      </div>
+    </div>
+  );
+}
+
 /* ============================== component ================================ */
 function App() {
   const [data, setData] = useState(null);
@@ -760,6 +802,8 @@ function App() {
   const [pair, setPair] = useState(null);
   const [picked, setPicked] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [celebrate, setCelebrate] = useState(null); // transient match/milestone overlay
+  const celebrateNow = (payload) => { setCelebrate(payload); fireConfetti(payload.match ? 60 : 44); };
   const [undo, setUndo] = useState([]); // in-session stack of reversible matchups (per profile)
   const [showAdd, setShowAdd] = useState(false);
   const [showSync, setShowSync] = useState(false);
@@ -879,6 +923,10 @@ function App() {
       if (ng !== g) { setVoteGender(ng); setBlockCount(c); }            // pair effect re-picks for new gender
       else { setBlockCount(completed); setPair(pickPair(poolFor(next, ng), next[ng][profile], pair)); }
       setPicked(null);
+      // Little milestone celebrations: the 10-vote unlock, then every 25.
+      const total = (next.boy[profile].votes || 0) + (next.girl[profile].votes || 0);
+      if (total === UNLOCK_VOTES) celebrateNow({ title: "Rankings unlocked!", emoji: "🔓", note: `${total} votes in — Rankings & Trends are open.` });
+      else if (total > 0 && total % 25 === 0) celebrateNow({ title: `${total} votes!`, emoji: "🎉", note: "You two are really dialing it in." });
     }, 280);
   };
   const skip = () => {
@@ -1013,9 +1061,19 @@ function App() {
     const next = clone(dataRef.current);
     const cur = next[g][profile];
     cur.starred = cur.starred || [];
-    cur.starred = cur.starred.includes(id) ? cur.starred.filter((x) => x !== id) : [...cur.starred, id];
+    const adding = !cur.starred.includes(id);
+    cur.starred = adding ? [...cur.starred, id] : cur.starred.filter((x) => x !== id);
     dataRef.current = next; setData(next);
     save({ [kCore(g, profile)]: coreOf(cur) });
+    // Couple match: the star that makes BOTH owners love a name → celebrate.
+    if (adding && isOwner(profile)) {
+      const other = profile === "claire" ? "andrew" : "claire";
+      const og = next[g][other];
+      if (og && (og.starred || []).includes(id)) {
+        const nm = findName(namesFor(g, next.custom, next.removed), id);
+        celebrateNow({ title: "It’s a match!", emoji: "💞", sub: nm.name, note: "you both love this one", match: true });
+      }
+    }
   };
   // Record a "For you" mash-up reaction. kind: "a"|"b" (pick winner), "love"
   // (both up), "pass" (both down). Feeds the recommender; not the voting list.
@@ -1114,6 +1172,7 @@ function App() {
 
   return (
     <PopModeCtx.Provider value={popMode}>
+    <Celebrate data={celebrate} onClose={() => setCelebrate(null)} />
     <div className="wrap">
       <Header me={data.profiles[profile]} myColor={pColor(profile)} onSwitch={switchMe}
         showAdd={showAdd} setShowAdd={setShowAdd}
@@ -2198,9 +2257,13 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
   const pts = names.map((n) => ({ n, x: xr[n.id], y: yr[n.id] })).filter((p) => p.x != null && p.y != null);
   if (pts.length < 2) return trendEmpty("Not enough names ranked yet.");
   const N = Math.max(names.length, 2);
-  const S = 360, padL = 12, padR = 74, padT = 20, padB = 32;
-  const px = (r) => padL + (1 - (r - 1) / (N - 1)) * (S - padL - padR); // rank 1 -> right
-  const py = (r) => padT + ((r - 1) / (N - 1)) * (S - padT - padB);     // rank 1 -> top
+  const S = 360, padL = 26, padR = 74, padT = 22, padB = 34;
+  // Inset the points from the axes so the worst-ranked name doesn't land on a line.
+  const gap = 14;
+  const xMin = padL + gap, xMax = S - padR, yMin = padT, yMax = S - padB - gap;
+  const xMid = (padL + S - padR) / 2, yMid = (padT + S - padB) / 2;
+  const px = (r) => xMin + (1 - (r - 1) / (N - 1)) * (xMax - xMin); // rank 1 -> right
+  const py = (r) => yMin + ((r - 1) / (N - 1)) * (yMax - yMin);     // rank 1 -> top
   // Color each dot on a 3-stop gradient by lean: xColor when x ranks it higher,
   // yColor when y does, and a green midpoint when they agree (avoids a muddy blend).
   const ramp = (t) => (t <= 0.5 ? hexLerp(xColor, midColor, t / 0.5) : hexLerp(midColor, yColor, (t - 0.5) / 0.5));
@@ -2211,9 +2274,9 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
         {/* L-shaped axes */}
         <line x1={padL} y1={padT} x2={padL} y2={S - padB} stroke={C.line} strokeWidth="1.5" />
         <line x1={padL} y1={S - padB} x2={S - padR} y2={S - padB} stroke={C.line} strokeWidth="1.5" />
-        {/* axis labels: the "loves it" direction */}
-        <text x={padL} y={padT - 7} textAnchor="start" fontSize="11.5" fontWeight="800" fill={yColor}>↑ {yLabel}</text>
-        <text x={S - padR} y={S - padB + 20} textAnchor="end" fontSize="11.5" fontWeight="800" fill={xColor}>{xLabel} →</text>
+        {/* axis labels: centered along each axis */}
+        <text x={11} y={yMid} textAnchor="middle" transform={`rotate(-90 11 ${yMid})`} fontSize="11.5" fontWeight="800" fill={yColor}>{yLabel}</text>
+        <text x={xMid} y={S - padB + 22} textAnchor="middle" fontSize="11.5" fontWeight="800" fill={xColor}>{xLabel}</text>
         {pts.map((p) => {
           const col = dotColor(p.x, p.y);
           return (
