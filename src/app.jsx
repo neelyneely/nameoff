@@ -1306,21 +1306,6 @@ function AddPanel({ custom, onAdd, onRemove }) {
         <button onClick={submit} className="lift" style={{ padding:"6px 16px", borderRadius:8, fontWeight:700, background:C.sage, color:"#fff" }}>Add</button>
       </div>
       <p style={{ fontSize:11, marginTop:8, color:C.muted }}>New names join voting right away and show “popularity &amp; meaning pending” until their SSA ranks and origin are filled in.</p>
-      {custom.length > 0 && (
-        <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${C.line}` }}>
-          <div style={{ fontSize:12, marginBottom:6, color:C.muted }}>Added names</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {custom.map((c) => (
-              <span key={c.id} style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 10px", borderRadius:999, fontSize:12, background:C.bg, border:`1px solid ${C.line}` }}>
-                <b style={{ color:C.ink }}>{c.name}</b>
-                <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.04em", color:C.muted }}>{c.gender === "both" ? "both" : c.gender}</span>
-                {c.byName && <span style={{ fontSize:10, color:C.sage }}>by {c.byName}</span>}
-                <button onClick={() => onRemove(c.id)} className="lift" style={{ color:C.clay }} aria-label={`Remove ${c.name}`}><Ic n="x" s={12} /></button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
