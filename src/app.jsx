@@ -591,13 +591,25 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "name";
 const uniqueId = (base, taken) => { let id = base, k = 2; while (taken.has(id)) { id = base + "-" + k; k++; } return id; };
 
+// User-added nicknames (id -> [nick]). A shared overlay merged onto every name's
+// base nicks, so anyone can nickname any name regardless of who added it. Held at
+// module scope (like POP/MEANING) and refreshed from data in assemble().
+let ADDED_NICKS = {};
+const mergeNicks = (n) => {
+  const add = ADDED_NICKS[n.id];
+  if (!add || !add.length) return n;
+  const seen = new Set((n.nicks || []).map((x) => x.toLowerCase()));
+  const nicks = [...(n.nicks || [])];
+  add.forEach((nk) => { const k = nk.toLowerCase(); if (!seen.has(k)) { seen.add(k); nicks.push(nk); } });
+  return { ...n, nicks };
+};
 function namesFor(gender, custom, removed) {
   const baseNames = new Set(NAMES[gender].map((n) => n.name.toLowerCase()));
   const extra = (custom || [])
     .filter((c) => (c.gender === gender || c.gender === "both") && !baseNames.has(c.name.toLowerCase()))
     .map((c) => ({ id: c.id, name: c.name, nicks: c.nicks || [], unisex: c.gender === "both", custom: true, by: c.by, byName: c.byName }));
   const rm = new Set(removed || []);
-  return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id));
+  return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id)).map(mergeNicks);
 }
 const findName = (names, id) => names.find((n) => n.id === id) || { id, name: id, nicks: [] };
 const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred, explore: pg.explore || {}, dismissed: pg.dismissed || {} });
@@ -616,6 +628,8 @@ function assemble(map) {
   const custom = Array.isArray(map.custom) ? map.custom : [];
   const removed = Array.isArray(map.removed) ? map.removed : [];
   const notes = (map.notes && typeof map.notes === "object") ? map.notes : {};
+  const addnicks = (map.addnicks && typeof map.addnicks === "object") ? map.addnicks : {};
+  ADDED_NICKS = addnicks; // refresh the module-scope overlay used by namesFor()
   // Roster of voters: the two owners are always present; guests come from the
   // saved "profiles" list (everyone is identified by their first name).
   const saved = Array.isArray(map.profiles) ? map.profiles : [];
@@ -623,7 +637,7 @@ function assemble(map) {
   OWNERS.forEach((k) => { roster.push({ key: k, name: OWNER_NAMES[k] }); seen.add(k); });
   saved.forEach((p) => { if (p && p.key && p.name && !seen.has(p.key)) { roster.push({ key: p.key, name: p.name }); seen.add(p.key); } });
   const profiles = {}; roster.forEach((p) => { profiles[p.key] = p.name; });
-  const data = { custom, removed, notes, roster, profiles, boy: {}, girl: {} };
+  const data = { custom, removed, notes, addnicks, roster, profiles, boy: {}, girl: {} };
   ["boy", "girl"].forEach((g) => roster.forEach(({ key: p }) => {
     const core = map[kCore(g, p)] || {};
     const hist = map[kHist(g, p)];
@@ -873,12 +887,45 @@ function App() {
     save({ custom: next.custom });
     if (pair && pair.includes(id)) setPair(pickPair(poolFor(next, voteGender), next[voteGender][profile], null));
   };
+  // Anyone can nickname any name (built-in or added), regardless of who added it.
+  const addNick = (id, raw) => {
+    const nick = (raw || "").trim();
+    if (!nick) return;
+    const next = clone(dataRef.current);
+    const an = { ...(next.addnicks || {}) };
+    const cur = an[id] ? [...an[id]] : [];
+    if (cur.some((x) => x.toLowerCase() === nick.toLowerCase())) return;
+    an[id] = [...cur, nick];
+    next.addnicks = an; ADDED_NICKS = an;
+    dataRef.current = next; setData(next);
+    save({ addnicks: an });
+  };
+  const removeNick = (id, nick) => {
+    const next = clone(dataRef.current);
+    const an = { ...(next.addnicks || {}) };
+    if (!an[id]) return;
+    an[id] = an[id].filter((x) => x.toLowerCase() !== nick.toLowerCase());
+    if (!an[id].length) delete an[id];
+    next.addnicks = an; ADDED_NICKS = an;
+    dataRef.current = next; setData(next);
+    save({ addnicks: an });
+  };
 
   const removeName = (id) => {
     const next = clone(dataRef.current);
     next.removed = Array.from(new Set([...(next.removed || []), id]));
+    // Removing supersedes vetoes: clear any veto for this id (both people, both
+    // genders) so a later restore brings the name back clean — no ghost veto.
+    const updates = { removed: next.removed };
+    ["boy", "girl"].forEach((g) => OWNERS.forEach((p) => {
+      const pgp = next[g][p];
+      if (pgp && (pgp.vetoed || []).includes(id)) {
+        pgp.vetoed = pgp.vetoed.filter((x) => x !== id);
+        updates[kCore(g, p)] = coreOf(pgp);
+      }
+    }));
     dataRef.current = next; setData(next);
-    save({ removed: next.removed });
+    save(updates);
     if (pair && pair.includes(id)) setPair(pickPair(poolFor(next, voteGender), next[voteGender][profile], null));
   };
   const restoreName = (id) => {
@@ -1003,7 +1050,7 @@ function App() {
       {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
         starred={pg.starred || []} onStar={(id) => toggleStar(voteGender, id)} onBack={goBack} canGoBack={canGoBack} profile={profile} />}
       {view === "rankings" && (unlocked
-        ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} notes={data.notes} onSetNote={setNote} />
+        ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} onAddNick={addNick} onRemoveNick={removeNick} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
       {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} />}
       {view === "trends" && (unlocked
@@ -1571,11 +1618,11 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
     </li>
   );
 }
-function Rankings({ data, profile, onUnveto, onVeto, onStar, onRemove, onRestore, notes, onSetNote }) {
+function Rankings({ data, profile, onUnveto, onVeto, onStar, onRemove, onRestore, onAddNick, onRemoveNick, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
   // Two rankings: the couple's combined (with agreement/disparity), and the family
   // pool (everyone who isn't Claire or Andrew). No individual tabs.
-  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Fam and Friends" }];
+  const options = [{ key: "combined", name: "Neely Stevenson" }, { key: "everyone", name: "Fam and Friends" }];
   const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage stars/notes on the couple's ranking only
   const tabColor = (k) => (k === "combined" ? C.teal : C.sage);
   return (
@@ -1590,7 +1637,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onStar, onRemove, onRestore
         <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onStar={onStar} />
         <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onStar={onStar} />
       </div>
-      {isOwner(profile) && <ManageNames data={data} onRemove={onRemove} onRestore={onRestore} />}
+      {isOwner(profile) && <ManageNames data={data} profile={profile} onRemove={onRemove} onRestore={onRestore} onVeto={onVeto} onUnveto={onUnveto} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />}
     </div>
   );
 }
@@ -1614,6 +1661,10 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const votedGuests = guestKeys.filter((k) => data[gender][k].votes > 0);
   const everyoneScore = (id) => votedGuests.length ? votedGuests.reduce((s, k) => s + (data[gender][k].ratings[id] ?? START), 0) / votedGuests.length : START;
   const isVetoed = (id) => isCombined ? (cVeto.includes(id) || aVeto.includes(id)) : isPerson ? sel.vetoed.includes(id) : false;
+  const cMatch = data[gender].claire.matches || {}, aMatch = data[gender].andrew.matches || {};
+  // "Not yet voted on" (combined view only): neither owner has seen it in a matchup yet.
+  const notVotedYet = (id) => isCombined && (cMatch[id] || 0) === 0 && (aMatch[id] || 0) === 0;
+  const suggesterOf = (id) => { const c = (data.custom || []).find((x) => x.id === id); return c ? (c.byName || (c.by && data.profiles[c.by]) || null) : null; };
 
   const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
   const cVoted = cVotes > 0, aVoted = aVotes > 0;
@@ -1641,12 +1692,13 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
     rows = names.map((n) => ({ n, score: sel.ratings[n.id] ?? START }));
   }
   // Sort by score; names that tie (same rounded score) fall back to alphabetical.
-  const live = rows.filter((r) => !isVetoed(r.n.id)).sort((x, y) => (Math.round(y.score) - Math.round(x.score)) || x.n.name.localeCompare(y.n.name));
+  const live = rows.filter((r) => !isVetoed(r.n.id) && !notVotedYet(r.n.id)).sort((x, y) => (Math.round(y.score) - Math.round(x.score)) || x.n.name.localeCompare(y.n.name));
   // Competition ranking: equal scores share a rank, the next distinct score resumes
   // at its position (e.g. 5, 5, 7) so a tie never makes one name look better.
   const liveRanks = [];
   live.forEach((r, i) => { liveRanks[i] = (i > 0 && Math.round(r.score) === Math.round(live[i - 1].score)) ? liveRanks[i - 1] : i + 1; });
   const dead = rows.filter((r) => isVetoed(r.n.id));
+  const unvoted = rows.filter((r) => !isVetoed(r.n.id) && notVotedYet(r.n.id)).sort((x, y) => x.n.name.localeCompare(y.n.name));
   const max = Math.max(...live.map((r) => r.score), START + 1);
   const min = Math.min(...live.map((r) => r.score), START - 1);
   // No real ranking to show until the relevant person/people have voted.
@@ -1683,6 +1735,26 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
             profile={profile} readOnly={readOnly} starOn={myStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} onVeto={(id) => onVeto(gender, profile, id)} notes={notes} onSetNote={onSetNote} />
         ))}
       </ol>
+      {unvoted.length > 0 && (
+        <div style={{ marginTop:20 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, color:C.muted }}>
+            <Ic n="list" s={12} /> Not yet voted on
+          </div>
+          <ul style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {unvoted.map((r) => {
+              const sug = suggesterOf(r.n.id);
+              return (
+                <li key={r.n.id} style={{ borderRadius:12, padding:"8px 12px", display:"flex", alignItems:"center", gap:12, background:C.paper, border:`1px dashed ${C.line}`, opacity:0.85 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <span className="disp" style={{ fontSize:16, fontWeight:700, color:C.ink }}>{r.n.name}</span>
+                    {sug && <span style={{ fontSize:10, marginLeft:8, color:C.sage }}>suggested by {sug}</span>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       {dead.length > 0 && (
         <div style={{ marginTop:20 }}>
           <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, color:C.clay }}>
@@ -1696,7 +1768,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
                   <span style={{ fontSize:10, marginLeft:8, color:C.clay }}>vetoed by {vetoLabel(r.n.id)}</span>
                 </div>
                 {!readOnly && myVeto.includes(r.n.id) && (
-                  <button onClick={() => onUnveto(gender, profile, r.n.id)} className="lift" style={{ fontSize:12, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>restore</button>
+                  <button onClick={() => onUnveto(gender, profile, r.n.id)} className="lift" style={{ fontSize:12, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>unveto</button>
                 )}
               </li>
             ))}
@@ -1709,7 +1781,47 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
 }
 
 /* --------------------------- manage names -------------------------------- */
-function ManageNames({ data, onRemove, onRestore }) {
+// One name in the Manage panel: name + veto/remove, plus an inline nickname
+// editor. `added` is the list of user-added nicks for this name (the only ones
+// with a remove ✕); base nicks show without one. Anyone can add a nickname.
+function NameChip({ n, added, gender, profile, onVeto, onRemove, onAddNick, onRemoveNick }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+  const addedSet = new Set((added || []).map((x) => x.toLowerCase()));
+  const submit = () => { const v = val.trim(); if (v) onAddNick(n.id, v); setVal(""); setEditing(false); };
+  return (
+    <li style={{ display:"flex", flexDirection:"column", gap:5, borderRadius:12, padding:"6px 8px 7px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{n.name}</span>
+        {n.custom && <span style={{ fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{n.byName ? `added by ${n.byName}` : "added"}</span>}
+        <span style={{ flex:1 }} />
+        <button onClick={() => onVeto(gender, profile, n.id)} className="lift" aria-label={`Veto ${n.name}`} title="Veto — your hard no"
+          style={{ display:"flex", alignItems:"center", padding:2, borderRadius:999, color:C.clay }}><Ic n="ban" s={12} /></button>
+        <button onClick={() => onRemove(n.id)} className="lift" aria-label={`Remove ${n.name}`} title="Remove for both of you"
+          style={{ display:"flex", alignItems:"center", padding:2, borderRadius:999, color:C.muted }}><Ic n="x" s={12} /></button>
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap" }}>
+        {(n.nicks || []).map((nk) => (
+          <span key={nk} style={{ display:"flex", alignItems:"center", gap:3, fontSize:11, padding:"1px 8px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.muted }}>
+            {nk}
+            {addedSet.has(nk.toLowerCase()) && (
+              <button onClick={() => onRemoveNick(n.id, nk)} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
+                style={{ display:"flex", color:C.clay, padding:0 }}><Ic n="x" s={9} /></button>
+            )}
+          </span>
+        ))}
+        {editing
+          ? <input autoFocus value={val} onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); else if (e.key === "Escape") { setEditing(false); setVal(""); } }}
+              onBlur={submit} placeholder="nickname"
+              style={{ fontSize:11, padding:"2px 7px", borderRadius:999, border:`1px solid ${C.sage}`, width:84, background:C.paper, color:C.ink }} />
+          : <button onClick={() => setEditing(true)} className="lift" title="Add a nickname (anyone can)"
+              style={{ fontSize:11, fontWeight:700, padding:"1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage }}>+ nick</button>}
+      </div>
+    </li>
+  );
+}
+function ManageNames({ data, profile, onRemove, onRestore, onVeto, onUnveto, onAddNick, onRemoveNick }) {
   const [open, setOpen] = useState(false);
   const { custom, removed } = data;
   const sortByName = (a, b) => a.name.localeCompare(b.name);
@@ -1717,26 +1829,49 @@ function ManageNames({ data, onRemove, onRestore }) {
   ["boy", "girl"].forEach((g) => NAMES[g].forEach((n) => { allById[n.id] = n.name; }));
   (custom || []).forEach((c) => { allById[c.id] = c.name; });
   const removedList = (removed || []).map((id) => ({ id, name: allById[id] || id }));
+  const RemoveBtn = ({ id, name }) => (
+    <button onClick={() => onRemove(id)} className="lift" aria-label={`Remove ${name}`} title="Remove for both of you"
+      style={{ display:"flex", alignItems:"center", padding:2, borderRadius:999, color:C.muted }}><Ic n="x" s={12} /></button>
+  );
   const Col = ({ title, gender }) => {
+    const cVeto = data[gender].claire.vetoed || [], aVeto = data[gender].andrew.vetoed || [];
+    const vetoedBy = (id) => { const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w; };
+    const myVeto = data[gender][profile].vetoed || [];
     const list = [...namesFor(gender, custom, removed)].sort(sortByName);
+    const active = list.filter((n) => vetoedBy(n.id).length === 0);
+    const vetoed = list.filter((n) => vetoedBy(n.id).length > 0);
     return (
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:8 }}>
           <h4 className="disp" style={{ margin:0, fontSize:15, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h4>
-          <span style={{ fontSize:12, color:C.muted }}>{list.length}</span>
+          <span style={{ fontSize:12, color:C.muted }}>{active.length}{vetoed.length ? ` · ${vetoed.length} vetoed` : ""}</span>
         </div>
         <ul style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-          {list.map((n) => (
-            <li key={n.id} style={{ display:"flex", alignItems:"center", gap:6, borderRadius:999, padding:"4px 6px 4px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
-              <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{n.name}</span>
-              {n.custom && <span style={{ fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{n.byName ? `added by ${n.byName}` : "added"}</span>}
-              <button onClick={() => onRemove(n.id)} className="lift" aria-label={`Remove ${n.name}`} title="Remove from app"
-                style={{ display:"flex", alignItems:"center", padding:2, borderRadius:999, color:C.muted }}>
-                <Ic n="x" s={12} />
-              </button>
-            </li>
+          {active.map((n) => (
+            <NameChip key={n.id} n={n} added={(data.addnicks || {})[n.id]} gender={gender} profile={profile}
+              onVeto={onVeto} onRemove={onRemove} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
           ))}
         </ul>
+        {vetoed.length > 0 && (
+          <div style={{ marginTop:10 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, color:C.clay }}>
+              <Ic n="ban" s={11} /> Vetoed
+            </div>
+            <ul style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {vetoed.map((n) => (
+                <li key={n.id} style={{ display:"flex", alignItems:"center", gap:6, borderRadius:999, padding:"4px 6px 4px 12px", background:C.paper, border:`1px dashed ${C.line}` }}>
+                  <span style={{ fontSize:13, fontWeight:600, color:C.muted, textDecoration:"line-through" }}>{n.name}</span>
+                  <span style={{ fontSize:10, color:C.clay }}>{vetoedBy(n.id).join(" & ")}</span>
+                  {myVeto.includes(n.id) && (
+                    <button onClick={() => onUnveto(gender, profile, n.id)} className="lift" title="Remove your veto"
+                      style={{ fontSize:11, padding:"2px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>unveto</button>
+                  )}
+                  <RemoveBtn id={n.id} name={n.name} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   };
@@ -1748,7 +1883,9 @@ function ManageNames({ data, onRemove, onRestore }) {
       </button>
       {open && (
         <div style={{ marginTop:12 }}>
-          <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>Remove a name for both of you, or restore one you removed. Add new names with the “+ Add name” button up top.</p>
+          <p style={{ fontSize:12, marginBottom:12, color:C.muted, lineHeight:1.55 }}>
+            <b style={{ color:C.clay }}>Veto</b> (⊘) is your personal hard no — it benches the name from voting and shows who said it. <b>Remove</b> (✕) takes a name off the list for both of you; that also clears any veto, so a restored name comes back clean. <b style={{ color:C.sage }}>+ nick</b> adds a nickname to any name — anyone can, no matter who added it. Add names with the “+ Add name” button up top.
+          </p>
           <div className="twocol"><Col title="Girls" gender="girl" /><Col title="Boys" gender="boy" /></div>
           {removedList.length > 0 && (
             <div style={{ marginTop:18 }}>
@@ -2023,7 +2160,7 @@ function Trends({ data, profile }) {
   // Drop names vetoed by either owner; vetoed names shouldn't appear anywhere in Trends.
   const vetoed = new Set([...data[g].claire.vetoed, ...data[g].andrew.vetoed]);
   const names = namesFor(g, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
-  const modes = [["byName","Compare names"],["compare","Compare voters"],["agree","Agreement"],["fam","Fam vs us"]];
+  const modes = [["byName","Compare names"],["compare","Compare voters"],["agree","Agreement"],["fam","Fam and Friends vs Neely Stevenson"]];
   return (
     <div>
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
