@@ -45,6 +45,7 @@ function Ic({ n, s = 16, c = "currentColor", fill = "none" }) {
     trend:"M3 17l6-6 4 4 8-8M21 7v6h-6",
     sync:"M21 12a9 9 0 1 1-2.6-6.3M21 4v4h-4",
     star:"M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8L3.5 9.7l5.9-.9z",
+    spark:"M12 3l1.7 5.1L19 9l-5.3 1.5L12 16l-1.7-5.5L5 9l5.3-.9zM18 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z",
   };
   const ban = n === "ban";
   return (
@@ -212,6 +213,239 @@ const MEANING = {
   rory:     "Irish · 'red king'",
   shae:     "Irish · 'hawk-like; stately'",
 };
+
+/* ===================== suggestions ("For you") ============================
+ * A content-based recommender that runs fully offline. We tag every roster
+ * name AND a curated candidate pool with a small feature vector (origin, style,
+ * ending sound, syllables, gender lean). At runtime we read the current voter's
+ * Elo ratings + stars + vetoes, learn which features they gravitate toward, and
+ * score the unseen candidates by similarity. "Add to voting" turns a candidate
+ * into a normal custom name; because candidate ids are the slug of the name,
+ * their MEANING/POP entries (folded in below) light up automatically once added.
+ *
+ * Origin codes: ir Irish · sc Scottish · we Welsh · co Cornish · en English
+ *   · no Norse/Scandinavian · la Latin · gr Greek · ge German · fr French
+ *   · sk Sanskrit. Style tags: sur surname-name · vin vintage · nat nature
+ *   · lyr soft/lyrical · pun strong/punchy · lit literary. */
+const ORIGIN_LABEL = { ir:"Irish", sc:"Scottish", we:"Welsh", co:"Cornish", en:"English", no:"Scandinavian", la:"Latin", gr:"Greek", ge:"German", fr:"French", sk:"Sanskrit" };
+const STYLE_LABEL  = { sur:"surname-name", vin:"vintage", nat:"nature", lyr:"soft", pun:"strong", lit:"literary" };
+
+// Feature vectors for the EXISTING roster (the recommender's training signal).
+const FEAT = {
+  finnegan:{o:"ir",s:["sur"],end:"n",syl:3,lean:"b"},
+  sean:{o:"ir",s:["pun"],end:"n",syl:1,lean:"b"},
+  keegan:{o:"ir",s:["sur"],end:"n",syl:2,lean:"b"},
+  callan:{o:"ir",s:["sur"],end:"n",syl:2,lean:"b"},
+  calvin:{o:"la",s:["vin"],end:"n",syl:2,lean:"b"},
+  mcallister:{o:"sc",s:["sur"],end:"r",syl:3,lean:"b"},
+  conall:{o:"ir",s:["pun"],end:"l",syl:2,lean:"b"},
+  seamus:{o:"ir",s:["vin"],end:"s",syl:2,lean:"b"},
+  lennox:{o:"sc",s:["sur","pun"],end:"x",syl:2,lean:"b"},
+  sloane:{o:"ir",s:["sur","pun"],end:"n",syl:1,lean:"g"},
+  rowan:{o:"ir",s:["sur","nat"],end:"n",syl:2,lean:"g"},
+  devin:{o:"ir",s:["sur"],end:"n",syl:2,lean:"g"},
+  marlowe:{o:"en",s:["sur","lit","lyr"],end:"o",syl:2,lean:"g"},
+  keelan:{o:"ir",s:["lyr"],end:"n",syl:2,lean:"g"},
+  cloda:{o:"ir",s:["lyr","nat"],end:"a",syl:2,lean:"g"},
+  lowen:{o:"co",s:["lyr"],end:"n",syl:2,lean:"g"},
+  bridget:{o:"ir",s:["vin"],end:"t",syl:2,lean:"g"},
+  merritt:{o:"en",s:["sur","pun"],end:"t",syl:2,lean:"g"},
+  maira:{o:"ir",s:["lyr"],end:"a",syl:2,lean:"g"},
+  fiona:{o:"sc",s:["lyr"],end:"a",syl:3,lean:"g"},
+  maeve:{o:"ir",s:["pun","vin"],end:"v",syl:1,lean:"g"},
+  wren:{o:"en",s:["nat","pun"],end:"n",syl:1,lean:"g"},
+  niamh:{o:"ir",s:["lyr"],end:"v",syl:1,lean:"g"},
+  lennon:{o:"ir",s:["sur","lit"],end:"n",syl:2,lean:"u"},
+  sullivan:{o:"ir",s:["sur"],end:"n",syl:3,lean:"u"},
+  rory:{o:"ir",s:["lyr"],end:"y",syl:2,lean:"u"},
+  shae:{o:"ir",s:["lyr"],end:"y",syl:1,lean:"u"},
+};
+
+// Curated candidate pool (wide net across origins). gender: "boy"|"girl"|"u".
+// rank = recent SSA-ish national rank (null = outside top 1000 / very rare).
+// NOTE: names already in the roster (maeve, wren, lennox, walker, ...) are
+// intentionally excluded here so their real popularity history isn't clobbered.
+const C0 = (gender, id, name, nicks, o, s, end, syl, rank, m) => ({ gender, id, name, nicks, o, s, end, syl, rank, m });
+const CANDS = [
+  // girls
+  C0("girl","greer","Greer",[],"sc",["sur","pun"],"r",1,{girl:980},"Scottish · watchful, guardian"),
+  C0("girl","maren","Maren",[],"no",["lyr"],"n",2,{girl:680},"Scandinavian · of the sea"),
+  C0("girl","della","Della",["Dell"],"en",["vin","lyr"],"a",2,{girl:820},"English · noble, bright"),
+  C0("girl","iris","Iris",[],"gr",["nat","vin"],"s",2,{girl:115},"Greek · rainbow; the flower"),
+  C0("girl","romy","Romy",[],"ge",["lyr","vin"],"y",2,{girl:760},"German · pet form of Rosemarie"),
+  C0("girl","juniper","Juniper",["Junie","June"],"la",["nat","lyr"],"r",3,{girl:240},"Latin · the evergreen juniper"),
+  C0("girl","linnea","Linnea",["Lin","Nea"],"no",["nat","lyr"],"a",3,{girl:null},"Scandinavian · the twinflower"),
+  C0("girl","sigrid","Sigrid",["Siri","Sig"],"no",["vin","pun"],"d",2,{girl:null},"Norse · victory and beauty"),
+  C0("girl","esme","Esme",[],"fr",["lyr","vin","lit"],"y",2,{girl:610},"French · esteemed, beloved"),
+  C0("girl","marigold","Marigold",["Goldie","Mari"],"en",["nat","vin"],"d",3,{girl:null},"English · the golden marigold flower"),
+  C0("girl","bryn","Bryn",[],"we",["pun","sur"],"n",1,{girl:820},"Welsh · hill, mound"),
+  C0("girl","tegan","Tegan",[],"we",["lyr","sur"],"n",2,{girl:null},"Welsh · fair, lovely"),
+  C0("girl","eira","Eira",[],"we",["nat","lyr"],"a",2,{girl:null},"Welsh · snow"),
+  C0("girl","elowen","Elowen",["Elo","Winnie"],"co",["lyr","nat"],"n",3,{girl:null},"Cornish · elm tree"),
+  C0("girl","maisie","Maisie",[],"sc",["vin","lyr"],"y",2,{girl:520},"Scottish · pearl; pet form of Margaret"),
+  C0("girl","nora","Nora",[],"ir",["vin","lyr"],"a",2,{girl:32},"Irish · light, honor"),
+  C0("girl","saoirse","Saoirse",["Sersh"],"ir",["lyr","lit"],"a",2,{girl:710},"Irish · freedom"),
+  C0("girl","maple","Maple",[],"en",["nat"],"l",2,{girl:690},"English · the maple tree"),
+  C0("girl","thea","Thea",[],"gr",["lyr","vin"],"a",2,{girl:200},"Greek · goddess; divine"),
+  C0("girl","wilder","Wilder",[],"en",["sur","nat","pun"],"r",2,{girl:900},"English · untamed, wild"),
+  // boys
+  C0("boy","soren","Soren",["Sory"],"no",["lyr","sur"],"n",2,{boy:500},"Danish · stern; form of Severus"),
+  C0("boy","ames","Ames",[],"en",["sur","pun"],"s",1,{boy:null},"English · friend"),
+  C0("boy","cassius","Cassius",["Cass","Cash"],"la",["vin","lit"],"s",3,{boy:350},"Latin · hollow"),
+  C0("boy","bodhi","Bodhi",[],"sk",["nat","lyr"],"y",2,{boy:280},"Sanskrit · awakening, enlightenment"),
+  C0("boy","linus","Linus",["Lin"],"gr",["vin","lit"],"s",2,{boy:null},"Greek · flax; the mythic musician"),
+  C0("boy","thorne","Thorne",[],"en",["sur","nat","pun"],"n",1,{boy:null},"English · thorn bush"),
+  C0("boy","cormac","Cormac",["Mac","Cory"],"ir",["pun","vin"],"k",2,{boy:820},"Irish · charioteer; raven's son"),
+  C0("boy","bowen","Bowen",["Bo"],"we",["sur","lyr"],"n",2,{boy:350},"Welsh · son of Owen"),
+  C0("boy","brennan","Brennan",[],"ir",["sur"],"n",2,{boy:690},"Irish · descendant of the brave one"),
+  C0("boy","tiernan","Tiernan",["Tiern"],"ir",["sur","lyr"],"n",3,{boy:null},"Irish · little lord"),
+  C0("boy","sutton","Sutton",[],"en",["sur"],"n",2,{boy:700},"English · from the south town"),
+  C0("boy","auden","Auden",[],"en",["sur","lit","vin"],"n",2,{boy:null},"English · old friend"),
+  C0("boy","thatcher","Thatcher",[],"en",["sur"],"r",2,{boy:830},"English · roof-thatcher"),
+  C0("boy","lochlan","Lochlan",["Lochie","Loch"],"ir",["lyr","sur"],"n",2,{boy:700},"Irish · land of the lakes"),
+  C0("boy","emmett","Emmett",[],"en",["vin","sur"],"t",2,{boy:135},"English · universal; whole"),
+  C0("boy","ronan","Ronan",[],"ir",["lyr"],"n",2,{boy:340},"Irish · little seal"),
+  C0("boy","desmond","Desmond",["Des","Dez"],"ir",["vin","sur"],"d",2,{boy:600},"Irish · from South Munster"),
+  C0("boy","silas","Silas",[],"la",["vin","lit"],"s",2,{boy:100},"Latin · of the forest"),
+  C0("boy","everett","Everett",["Ev","Rhett"],"en",["sur","vin"],"t",3,{boy:80},"English · brave as a wild boar"),
+  C0("boy","cassian","Cassian",["Cass"],"la",["lyr","lit"],"n",3,{boy:710},"Latin · from the Cassia family"),
+  C0("boy","arlo","Arlo",[],"en",["lyr","vin"],"o",2,{boy:180},"English · between two hills"),
+  C0("boy","magnus","Magnus",["Mags"],"no",["pun","vin"],"s",2,{boy:480},"Norse · great"),
+  // unisex
+  C0("u","ellis","Ellis",[],"we",["sur","lyr"],"s",2,{girl:760,boy:250},"Welsh · benevolent, kindly"),
+  C0("u","arden","Arden",[],"en",["sur","nat","lit"],"n",2,{girl:620,boy:640},"English · valley of the eagle; great forest"),
+  C0("u","reese","Reese",[],"we",["sur","pun"],"s",1,{girl:340,boy:520},"Welsh · ardor, enthusiasm"),
+  C0("u","quinn","Quinn",[],"ir",["sur","pun"],"n",1,{girl:80,boy:420},"Irish · descendant of Conn; chief"),
+  C0("u","walker","Walker",[],"en",["sur","pun"],"r",2,{girl:null,boy:78},"English · cloth-walker, fuller"),
+  C0("u","emerson","Emerson",["Em","Ember"],"en",["sur","lit"],"n",3,{girl:150,boy:400},"English · son of Emery"),
+  C0("u","sage","Sage",[],"la",["nat","lyr"],"j",1,{girl:240,boy:620},"Latin · wise; the herb"),
+  C0("u","lark","Lark",[],"en",["nat","pun"],"k",1,{girl:null,boy:null},"English · the songbird; lighthearted"),
+  C0("u","ellison","Ellison",["Ellie","Sonny"],"en",["sur","lyr"],"n",3,{girl:900,boy:null},"English · son of Ellis"),
+  C0("u","indigo","Indigo",["Indie"],"gr",["nat","lyr","lit"],"o",3,{girl:null,boy:null},"Greek · the deep-blue dye"),
+  C0("u","sailor","Sailor",[],"en",["nat","sur"],"r",2,{girl:null,boy:null},"English · one who sails"),
+  C0("u","brevin","Brevin",[],"en",["sur","lyr"],"n",2,{girl:null,boy:null},"American · modern surname-name"),
+  C0("u","ocean","Ocean",[],"gr",["nat"],"n",2,{girl:null,boy:null},"Greek · the sea"),
+];
+// Derive the candidate roster + fold candidate features/meanings/popularity into
+// the shared maps so an added candidate behaves like any other name.
+const CAND = { boy:[], girl:[], unisex:[] };
+CANDS.forEach((c) => {
+  CAND[c.gender === "u" ? "unisex" : c.gender].push({ id:c.id, name:c.name, nicks:c.nicks });
+  FEAT[c.id] = { o:c.o, s:c.s, end:c.end, syl:c.syl, lean:(c.gender === "u" ? "u" : c.gender === "boy" ? "b" : "g") };
+  // Fold meaning/popularity in WITHOUT overwriting any curated entry that already
+  // exists (e.g. a name that's also in the roster keeps its real history).
+  if (MEANING[c.id] == null) MEANING[c.id] = c.m;
+  const pop = POP[c.id] || (POP[c.id] = {});
+  if (c.rank.girl !== undefined && !pop.girl) pop.girl = { 2025: c.rank.girl };
+  if (c.rank.boy  !== undefined && !pop.boy)  pop.boy  = { 2025: c.rank.boy };
+});
+// Stamp nickname-potential (nk) onto every tagged name so the model can use it.
+const NICKS_N = {};
+[...NAMES.boy, ...NAMES.girl].forEach((n) => { NICKS_N[n.id] = (n.nicks || []).length; });
+CANDS.forEach((c) => { NICKS_N[c.id] = (c.nicks || []).length; });
+Object.keys(FEAT).forEach((id) => { FEAT[id].nk = NICKS_N[id] ? 1 : 0; });
+
+// Most recent known rank for a name/gender (null = not ranked).
+function latestRank(id, g) {
+  const m = POP[id] && POP[id][g];
+  if (!m) return null;
+  const ys = Object.keys(m).map(Number).sort((a, b) => b - a);
+  for (const y of ys) if (m[y] != null) return m[y];
+  return null;
+}
+// Coarse popularity bucket used as a model feature.
+function tierKeyFor(id, g) {
+  const r = latestRank(id, g);
+  if (r == null) return "rare";
+  if (r > 700) return "uncommon";
+  if (r > 300) return "rising";
+  return "popular";
+}
+// How much each feature TYPE counts. Origin is deliberately low (Andrew wants to
+// branch out from Irish); style + sound high (that's the real "vibe").
+const TW = { o:0.3, s:1.4, end:1.0, syl:0.3, lean:0.6, tier:0.7, nick:0.5 };
+// Cold-start prior: before there are many votes, lean toward the seed taste
+// (surname-names, soft sounds, uncommon, unisex, good nicknames). Fades out by
+// ~15 votes as the learned signal takes over.
+const PRIOR = { "s:sur":1.2, "s:lyr":1.0, "s:nat":0.4, "s:vin":0.3, "tier:uncommon":1.0, "tier:rare":0.6, "lean:u":0.5, "nick:1":0.5 };
+
+// Score the candidate pool for one voter + gender. Returns [{c, sc, f}] desc.
+function suggestNames(data, profile, gender) {
+  const pg = data[gender][profile];
+  const roster = namesFor(gender, data.custom, data.removed);
+  const present = new Set(roster.map((x) => x.id));
+  const removed = new Set(data.removed || []);
+  const explore = pg.explore || {};
+  // Signed, confidence-scaled signal from the mash-up "explore" tallies.
+  const exWeight = (id) => {
+    const e = explore[id]; if (!e) return 0;
+    return Math.max(-5, Math.min(5, e.s || 0)) * Math.min(1, (e.n || 0) / 2);
+  };
+  // 1. Per-name training weight: roster from Elo/stars/vetoes; explored
+  //    candidates from their mash-up signal (this is what widens the model
+  //    beyond the narrow roster — reacting to a Norse name teaches all Norse).
+  const w = {};
+  roster.forEach((nm) => {
+    if (!FEAT[nm.id]) return;
+    const m = pg.matches[nm.id] || 0;
+    const r = pg.ratings[nm.id] ?? START;
+    let wt = ((r - START) / 80) * Math.min(1, m / 4);
+    if ((pg.starred || []).includes(nm.id)) wt += 3;
+    if ((pg.vetoed  || []).includes(nm.id)) wt = -4;
+    w[nm.id] = wt;
+  });
+  Object.keys(explore).forEach((id) => { if (FEAT[id] && w[id] == null) w[id] = exWeight(id); });
+  // 2. Learn a preference per feature value (shrunk toward 0 when sparse).
+  const acc = {};
+  const bump = (k, v) => { const a = acc[k] || (acc[k] = { s:0, n:0 }); a.s += v; a.n++; };
+  const train = (id) => {
+    const f = FEAT[id]; if (!f) return;
+    const wt = w[id] || 0;
+    bump("o:" + f.o, wt);
+    f.s.forEach((t) => bump("s:" + t, wt));
+    bump("end:" + f.end, wt);
+    bump("syl:" + f.syl, wt);
+    bump("lean:" + f.lean, wt);
+    bump("tier:" + tierKeyFor(id, gender), wt);
+    bump("nick:" + (f.nk ? 1 : 0), wt);
+  };
+  roster.forEach((nm) => train(nm.id));
+  Object.keys(explore).forEach((id) => { if (FEAT[id] && !present.has(id)) train(id); });
+  const learned = {};
+  Object.keys(acc).forEach((k) => { learned[k] = acc[k].s / (2 + acc[k].n); });
+  const alpha = Math.max(0, Math.min(1, 1 - (pg.votes || 0) / 15)); // prior weight
+  const P = (k) => (learned[k] || 0) + alpha * (PRIOR[k] || 0);
+  const DIRECT = 0.6; // weight on a candidate's OWN mash-up signal
+  // 3. Score unseen candidates (skip roster/removed, hide "pass both" names).
+  const pool = [...(CAND[gender] || []), ...CAND.unisex];
+  return pool
+    .filter((c) => FEAT[c.id] && !present.has(c.id) && !removed.has(c.id))
+    .filter((c) => { const e = explore[c.id]; return !(e && e.s <= -3); })
+    .map((c) => {
+      const f = FEAT[c.id];
+      let sc = TW.o * P("o:" + f.o) + TW.end * P("end:" + f.end) + TW.syl * P("syl:" + f.syl)
+             + TW.lean * P("lean:" + f.lean) + TW.tier * P("tier:" + tierKeyFor(c.id, gender))
+             + TW.nick * P("nick:" + (f.nk ? 1 : 0));
+      f.s.forEach((t) => { sc += TW.s * P("s:" + t); });
+      sc += DIRECT * exWeight(c.id);
+      return { c, sc, f };
+    })
+    .sort((a, b) => b.sc - a.sc);
+}
+
+// Pick two candidates to compare next in a mash-up: favor names not yet reacted
+// to, and pick a second that DIFFERS on a feature axis so the answer is informative.
+function pickExplorePair(data, profile, gender, scored) {
+  const explore = (data[gender][profile] || {}).explore || {};
+  const seen = (id) => (explore[id] ? (explore[id].n || 0) : 0);
+  const list = scored.map((x) => x.c).filter((c) => !(explore[c.id] && explore[c.id].s <= -3));
+  if (list.length < 2) return null;
+  const ranked = [...list].sort((a, b) => (seen(a.id) - seen(b.id)) || (Math.random() - 0.5));
+  const a = ranked[0], fa = FEAT[a.id];
+  const differs = (c) => { const f = FEAT[c.id]; return f.o !== fa.o || f.end !== fa.end || f.s[0] !== fa.s[0]; };
+  const b = ranked.slice(1).find(differs) || ranked[1];
+  return [a, b];
+}
 const pctOf = (id, gender) => (PCT[id] && PCT[id][gender] != null) ? PCT[id][gender] : null;
 const fmtPct = (p) => p == null ? null : (p < 0.01 ? "<0.01%" : p.toFixed(2) + "%");
 // Estimate a rank from a percent by interpolating known (percent, rank) pairs for that sex.
@@ -360,7 +594,7 @@ function namesFor(gender, custom, removed) {
   return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id));
 }
 const findName = (names, id) => names.find((n) => n.id === id) || { id, name: id, nicks: [] };
-const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred });
+const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred, explore: pg.explore || {} });
 const trimHistory = (h) => {
   let a = h.slice(-HISTORY_CAP);
   while (JSON.stringify(a).length > 45000 && a.length > 10) a = a.slice(Math.ceil(a.length * 0.1));
@@ -370,7 +604,7 @@ const trimHistory = (h) => {
 function emptyPG(gender, custom) {
   const ratings = {}, matches = {};
   namesFor(gender, custom).forEach((n) => { ratings[n.id] = START; matches[n.id] = 0; });
-  return { ratings, matches, votes: 0, vetoed: [], starred: [], history: [] };
+  return { ratings, matches, votes: 0, vetoed: [], starred: [], history: [], explore: {} };
 }
 function assemble(map) {
   const custom = Array.isArray(map.custom) ? map.custom : [];
@@ -390,6 +624,7 @@ function assemble(map) {
     const pg = {
       ratings: core.ratings || {}, matches: core.matches || {},
       votes: core.votes || 0, vetoed: core.vetoed || [], starred: core.starred || [],
+      explore: core.explore || {},
       history: Array.isArray(hist) ? hist : [],
     };
     namesFor(g, custom).forEach((n) => {
@@ -603,6 +838,13 @@ function App() {
     dataRef.current = next; setData(next);
     save({ [kCore(g, profileKey)]: coreOf(next[g][profileKey]) });
   };
+  // Veto a specific name by id (used from the Rankings list, not the vote pair).
+  const vetoName = (g, profileKey, id) => {
+    const next = clone(dataRef.current);
+    if (!next[g][profileKey].vetoed.includes(id)) next[g][profileKey].vetoed.push(id);
+    dataRef.current = next; setData(next);
+    save({ [kCore(g, profileKey)]: coreOf(next[g][profileKey]) });
+  };
 
   const addName = (name, nicksStr, g) => {
     const next = clone(dataRef.current);
@@ -644,6 +886,21 @@ function App() {
     const cur = next[g][profile];
     cur.starred = cur.starred || [];
     cur.starred = cur.starred.includes(id) ? cur.starred.filter((x) => x !== id) : [...cur.starred, id];
+    dataRef.current = next; setData(next);
+    save({ [kCore(g, profile)]: coreOf(cur) });
+  };
+  // Record a "For you" mash-up reaction. kind: "a"|"b" (pick winner), "love"
+  // (both up), "pass" (both down). Feeds the recommender; not the voting list.
+  const reactExplore = (g, ids, kind) => {
+    const next = clone(dataRef.current);
+    const cur = next[g][profile];
+    cur.explore = { ...(cur.explore || {}) };
+    const adj = (id, ds) => { const e = cur.explore[id] || { s:0, n:0 }; cur.explore[id] = { s: e.s + ds, n: e.n + 1 }; };
+    const [a, b] = ids;
+    if (kind === "a") { adj(a, 1.0); adj(b, -0.6); }
+    else if (kind === "b") { adj(b, 1.0); adj(a, -0.6); }
+    else if (kind === "love") { adj(a, 1.5); adj(b, 1.5); }
+    else if (kind === "pass") { adj(a, -1.5); adj(b, -1.5); }
     dataRef.current = next; setData(next);
     save({ [kCore(g, profile)]: coreOf(cur) });
   };
@@ -720,8 +977,9 @@ function App() {
       {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
         starred={pg.starred || []} onStar={(id) => toggleStar(voteGender, id)} onBack={goBack} canGoBack={canGoBack} profile={profile} />}
       {view === "rankings" && (unlocked
-        ? <Rankings data={data} profile={profile} onUnveto={unveto} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} notes={data.notes} onSetNote={setNote} />
+        ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
+      {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} />}
       {view === "trends" && (unlocked
         ? <Trends data={data} profile={profile} />
         : <LockMsg myVotes={myVotes} />)}
@@ -920,7 +1178,7 @@ function AddPanel({ custom, onAdd, onRemove }) {
 
 /* -------------------------------- tabs ----------------------------------- */
 function Tabs({ view, setView }) {
-  const items = [["vote","Vote","heart"],["rankings","Rankings","trophy"],["trends","Trends","trend"]];
+  const items = [["vote","Vote","heart"],["foryou","For you","spark"],["rankings","Rankings","trophy"],["trends","Trends","trend"]];
   return (
     <div style={{ display:"flex", gap:4, marginBottom:20, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label, icon]) => (
@@ -1215,7 +1473,7 @@ function NoteBlock({ id, notes, profile, onSetNote }) {
     </div>
   );
 }
-function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, starOn, both, onStar, notes, onSetNote }) {
+function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, starOn, both, onStar, onVeto, notes, onSetNote }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
@@ -1249,6 +1507,11 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
             <Ic n="star" s={18} c={C.ochre} fill={starOn ? C.ochre : "none"} />
           </button>
         )}
+        {!readOnly && (
+          <button onClick={() => onVeto(r.n.id)} className="lift" aria-label={`Veto ${r.n.name}`} title="Veto" style={{ display:"flex", padding:2, color:C.clay, opacity:0.5 }}>
+            <Ic n="ban" s={18} c={C.clay} />
+          </button>
+        )}
       </div>
       {!readOnly && (
         <button onClick={() => setShowNote((s) => !s)} className="lift" style={{ marginTop:6, fontSize:11, fontWeight:600, padding:"3px 9px", borderRadius:999, border:`1px solid ${C.line}`, background:"transparent", color: noteCount ? C.sage : C.muted }}>
@@ -1259,7 +1522,7 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
     </li>
   );
 }
-function Rankings({ data, profile, onUnveto, onStar, onRemove, onRestore, notes, onSetNote }) {
+function Rankings({ data, profile, onUnveto, onVeto, onStar, onRemove, onRestore, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
   // Two rankings: the couple's combined (with agreement/disparity), and the family
   // pool (everyone who isn't Claire or Andrew). No individual tabs.
@@ -1275,14 +1538,14 @@ function Rankings({ data, profile, onUnveto, onStar, onRemove, onRestore, notes,
         ))}
       </div>
       <div className="twocol">
-        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
-        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onStar={onStar} />
+        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onStar={onStar} />
+        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onStar={onStar} />
       </div>
       {isOwner(profile) && <ManageNames data={data} onRemove={onRemove} onRestore={onRestore} />}
     </div>
   );
 }
-function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes, onSetNote, onUnveto, onStar }) {
+function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes, onSetNote, onUnveto, onVeto, onStar }) {
   notes = notes || {};
   const names = namesFor(gender, data.custom, data.removed);
   const cR = data[gender].claire.ratings, aR = data[gender].andrew.ratings;
@@ -1368,7 +1631,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
-            profile={profile} readOnly={readOnly} starOn={myStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} notes={notes} onSetNote={onSetNote} />
+            profile={profile} readOnly={readOnly} starOn={myStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} onVeto={(id) => onVeto(gender, profile, id)} notes={notes} onSetNote={onSetNote} />
         ))}
       </ol>
       {dead.length > 0 && (
@@ -1727,6 +1990,124 @@ function Trends({ data, profile }) {
       {mode === "compare" && <CompareTrends data={data} gender={g} names={names} />}
       {mode === "agree" && <AgreementView data={data} gender={g} names={names} />}
       {mode === "fam" && <FamVsUsView data={data} gender={g} names={names} />}
+    </div>
+  );
+}
+
+/* ---------------------- "For you" suggestions ---------------------------- */
+function ForYou({ data, profile, initialGender, onAdd, onReact }) {
+  const [g, setG] = useState(initialGender || "girl");
+  const [lastAdded, setLastAdded] = useState(null);
+  const [round, setRound] = useState(0);
+  const [pair, setPair] = useState(null);
+  const votes = data[g][profile] ? (data[g][profile].votes || 0) : 0;
+  const explore = (data[g][profile] || {}).explore || {};
+  const tuned = Object.keys(explore).length;
+  const sugg = suggestNames(data, profile, g).slice(0, 12);
+
+  // (Re)pick a mash-up whenever the gender changes or a reaction advances the round.
+  useEffect(() => {
+    setPair(pickExplorePair(data, profile, g, suggestNames(data, profile, g)));
+  }, [g, round, profile]); // eslint-disable-line
+
+  const react = (kind) => {
+    if (pair && kind !== "skip") onReact(g, [pair[0].id, pair[1].id], kind);
+    setRound((r) => r + 1);
+  };
+  const add = (item) => {
+    const c = item.c;
+    const gender = item.f.lean === "u" ? "both" : g;
+    onAdd(c.name, (c.nicks || []).join(", "), gender);
+    setLastAdded({ name: c.name, gender });
+    setRound((r) => r + 1);
+  };
+
+  return (
+    <div>
+      <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center", flexWrap:"wrap" }}>
+        <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={(v) => { setG(v); setLastAdded(null); }} active={gColor} />
+      </div>
+
+      {pair && (
+        <div style={{ marginBottom:18, padding:"14px 14px 12px", borderRadius:14, background:gTint(g), border:`1px solid ${C.line}` }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, flexWrap:"wrap", gap:6 }}>
+            <span style={{ fontSize:13, fontWeight:700, color:C.ink }}>Tune your taste</span>
+            <span style={{ fontSize:11, color:C.muted }}>{tuned ? `tuned on ${tuned} name${tuned === 1 ? "" : "s"}` : "teaches your suggestions"}</span>
+          </div>
+          <div style={{ display:"flex", gap:10, alignItems:"stretch" }}>
+            {pair.map((c, i) => {
+              const f = FEAT[c.id];
+              return (
+                <button key={c.id} onClick={() => react(i === 0 ? "a" : "b")} className="lift"
+                  style={{ flex:1, minWidth:0, textAlign:"left", padding:"11px 12px", borderRadius:12, background:C.paper, border:`1px solid ${C.line}` }}>
+                  <div style={{ fontFamily:DISPLAY, fontSize:21, color:C.ink, lineHeight:1.1 }}>{c.name}</div>
+                  <div style={{ fontSize:11.5, color:C.muted, margin:"3px 0 0" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
+                  <div style={{ fontSize:10.5, color:C.teal, marginTop:5, fontWeight:600 }}>{ORIGIN_LABEL[f.o] || ""}{f.lean === "u" ? " · unisex" : ""}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display:"flex", gap:8, marginTop:10, justifyContent:"center", flexWrap:"wrap" }}>
+            <button onClick={() => react("love")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:12.5, fontWeight:700, padding:"7px 14px", borderRadius:999, background:C.sage, color:"#fff" }}>
+              <Ic n="heart" s={13} c="#fff" fill="#fff" /> Love both
+            </button>
+            <button onClick={() => react("pass")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:12.5, fontWeight:700, padding:"7px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, color:C.clay }}>
+              <Ic n="ban" s={13} c={C.clay} /> Pass both
+            </button>
+            <button onClick={() => react("skip")} className="lift" style={{ fontSize:12.5, fontWeight:600, padding:"7px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+              Skip
+            </button>
+          </div>
+        </div>
+      )}
+
+      <p style={{ fontSize:13, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
+        {votes < 4 && tuned < 3
+          ? <>New names that match the <b>style</b> of your starting list. Vote or use <b>Tune</b> above and these retune to <b>your</b> taste.</>
+          : <>Tuned to your votes, stars, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>+ Add</b> to drop one into voting.</>}
+      </p>
+
+      {lastAdded && (
+        <div style={{ marginBottom:14, padding:"10px 12px", borderRadius:10, background:gTint(g), border:`1px solid ${C.line}`, fontSize:13, color:C.ink }}>
+          Added <b style={{ fontFamily:DISPLAY }}>{lastAdded.name}</b> to {lastAdded.gender === "both" ? "both lists" : lastAdded.gender === "boy" ? "boys" : "girls"}. It’s in your Vote deck now.
+        </div>
+      )}
+
+      {sugg.length === 0 ? (
+        <p style={{ fontSize:13, color:C.muted }}>You’ve added all the close matches — keep voting and check back.</p>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {sugg.map((item) => {
+            const c = item.c, f = item.f;
+            const tier = tierOf(latestRank(c.id, g));
+            const styles = f.s.slice(0, 2).map((t) => STYLE_LABEL[t]).filter(Boolean);
+            const nick = (c.nicks && c.nicks.length) ? c.nicks[0] : null;
+            return (
+              <div key={c.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderRadius:12, background:C.paper, border:`1px solid ${C.line}` }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
+                    <span style={{ fontFamily:DISPLAY, fontSize:22, color:C.ink }}>{c.name}</span>
+                    {f.lean === "u" && <span style={{ fontSize:10, fontWeight:700, color:C.teal, letterSpacing:0.4 }}>UNISEX</span>}
+                    {nick && <span style={{ fontSize:12, color:C.muted }}>“{nick}”</span>}
+                  </div>
+                  <div style={{ fontSize:12.5, color:C.muted, margin:"2px 0 7px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    <span style={{ fontSize:10.5, fontWeight:700, color:tier.color, border:`1px solid ${tier.color}`, borderRadius:999, padding:"1px 7px" }}>{tier.label}</span>
+                    <span style={{ fontSize:10.5, color:C.muted, background:C.bg, borderRadius:999, padding:"1px 7px" }}>{ORIGIN_LABEL[f.o] || ""}</span>
+                    {styles.map((s) => (
+                      <span key={s} style={{ fontSize:10.5, color:C.muted, background:C.bg, borderRadius:999, padding:"1px 7px" }}>{s}</span>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={() => add(item)} className="lift"
+                  style={{ flexShrink:0, display:"flex", alignItems:"center", gap:5, padding:"8px 14px", borderRadius:999, fontWeight:700, fontSize:13, background:gColor(g), color:"#fff" }}>
+                  <Ic n="plus" s={14} c="#fff" /> Add
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
