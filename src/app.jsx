@@ -2177,7 +2177,7 @@ function CompareTrends({ data, gender, names }) {
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
 How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> over time. You, Andrew, and family each get a line. Pick a name below.
       </p>
-      <TrendChart lines={lines} />
+      <TrendChart lines={lines} endLabels />
       <div style={{ display:"flex", gap:14, marginTop:8, fontSize:11, color:C.muted, flexWrap:"wrap" }}>
         {lines.map((l) => (
           <span key={l.id} style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px ${l.dash ? "dashed" : "solid"} ${l.color}` }} /> {l.name}</span>
