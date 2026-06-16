@@ -29,6 +29,8 @@
   .disp{font-family:var(--disp);}
   #root>.boot{display:flex;min-height:100vh;align-items:center;justify-content:center;color:var(--muted);font-size:14px;}
   @media (max-width:560px){ .twocol{flex-direction:column;} .addgrid{grid-template-columns:1fr;} .cards{flex-direction:column;} }
+  /* On desktop, center the matchup in the remaining viewport instead of leaving a big gap below. */
+  @media (min-width:561px){ .voteWrap{min-height:calc(100vh - 210px);display:flex;flex-direction:column;justify-content:center;} }
   @media (prefers-reduced-motion: reduce){ .lift{transition:none;} }
 </style>
 </head>

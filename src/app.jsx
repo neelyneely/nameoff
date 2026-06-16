@@ -1122,7 +1122,8 @@ function App() {
       <Tabs view={view} setView={setView} />
 
       {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
-        starred={pg.starred || []} onStar={(id) => toggleStar(voteGender, id)} onBack={goBack} canGoBack={canGoBack} profile={profile} />}
+        starred={pg.starred || []} onStar={(id) => toggleStar(voteGender, id)} onBack={goBack} canGoBack={canGoBack} profile={profile}
+        addnicks={data.addnicks} onAddNick={addNick} onRemoveNick={removeNick} />}
       {view === "rankings" && (unlocked
         ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} onAddNick={addNick} onRemoveNick={removeNick} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
@@ -1527,7 +1528,38 @@ function PopLine({ id, gender, compact = false, noChart = false }) {
 }
 
 /* -------------------------------- vote ----------------------------------- */
-function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar }) {
+// Inline nickname adder/remover. Reused on the vote cards, the rankings rows, and
+// the Manage-names panel. Anyone can add a nickname to any name; only nicknames a
+// user added (in `added`) can be removed. Stops click/key bubbling so it can live
+// inside a clickable vote card without triggering a vote.
+function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+  const addedSet = new Set((added || []).map((x) => x.toLowerCase()));
+  const submit = () => { const v = val.trim(); if (v) onAddNick(id, v); setVal(""); setEditing(false); };
+  const fs = big ? 13 : 11;
+  return (
+    <div onClick={(e) => e.stopPropagation()} style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap", justifyContent: center ? "center" : "flex-start" }}>
+      {(nicks || []).map((nk) => (
+        <span key={nk} style={{ display:"flex", alignItems:"center", gap:3, fontSize:fs, fontWeight:600, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>
+          {nk}
+          {addedSet.has(nk.toLowerCase()) && (
+            <button onClick={(e) => { e.stopPropagation(); onRemoveNick(id, nk); }} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
+              style={{ display:"flex", color:C.clay, padding:0, background:"none" }}><Ic n="x" s={big ? 11 : 9} c={C.clay} /></button>
+          )}
+        </span>
+      ))}
+      {editing
+        ? <input autoFocus value={val} onClick={(e) => e.stopPropagation()} onChange={(e) => setVal(e.target.value)}
+            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") submit(); else if (e.key === "Escape") { setEditing(false); setVal(""); } }}
+            onBlur={submit} placeholder="nickname"
+            style={{ fontSize:fs, padding: big ? "2px 8px" : "2px 7px", borderRadius:999, border:`1px solid ${C.sage}`, width: big ? 96 : 84, background:C.paper, color:C.ink }} />
+        : <button onClick={(e) => { e.stopPropagation(); setEditing(true); }} className="lift" title="Add a nickname (anyone can)"
+            style={{ fontSize:fs, fontWeight:700, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage, background:"transparent" }}>+ nick</button>}
+    </div>
+  );
+}
+function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar, added, onAddNick, onRemoveNick }) {
   const chosen = picked === n.id;
   const accent = gColor(gender);     // pink for girls, blue for boys (follows the matchup)
   const popMode = React.useContext(PopModeCtx);
@@ -1557,7 +1589,11 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar }) {
       <div style={{ minHeight:46, display:"flex", alignItems:"center", justifyContent:"center" }}>
         <span className="disp" style={{ fontSize:36, fontWeight:800, lineHeight:1.04, color:C.ink }}>{n.name}</span>
       </div>
-      <div style={{ minHeight:24, marginTop:8, fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</div>
+      <div style={{ minHeight:28, marginTop:8, display:"flex", justifyContent:"center", alignItems:"center" }}>
+        {onAddNick
+          ? <NickEditor id={n.id} nicks={n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} center big />
+          : <span style={{ fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</span>}
+      </div>
       <div style={{ minHeight:36, marginTop:6, fontSize:12.5, color:C.muted, fontStyle:"italic", lineHeight:1.4 }}>{MEANING[n.id] ? cleanMeaning(MEANING[n.id]) : ""}</div>
       <div style={{ minHeight:15, fontSize:11, fontWeight:600, color:C.sage }}>{n.byName ? `✨ suggested by ${n.byName}` : ""}</div>
       <div style={{ minHeight:88, marginTop:6, display:"flex", justifyContent:"center", alignItems:"center" }}>
@@ -1584,7 +1620,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar }) {
     </div>
   );
 }
-function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, onStar, onBack, canGoBack, profile }) {
+function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, onStar, onBack, canGoBack, profile, addnicks, onAddNick, onRemoveNick }) {
   const banner = (
     <div style={{ display:"flex", justifyContent:"center", marginBottom:14 }}>
       <span className="disp" style={{ fontSize:14, fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase", color: gColor(gender),
@@ -1605,11 +1641,11 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, on
     <div>
       {banner}
       <div className="cards">
-        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} starred={starred.includes(a)} onStar={() => onStar(a)} />
+        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} starred={starred.includes(a)} onStar={() => onStar(a)} added={(addnicks || {})[a]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span className="disp" style={{ fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} starred={starred.includes(b)} onStar={() => onStar(b)} />
+        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} starred={starred.includes(b)} onStar={() => onStar(b)} added={(addnicks || {})[b]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
       </div>
       <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
         <button onClick={onBack} disabled={!canGoBack} className="lift" title="Revisit your last vote and change it"
@@ -1652,7 +1688,7 @@ function nameAttrib(n) {
   if (n.by) return { kind: "guest", name: n.byName || n.by };
   return { kind: "unknown" };
 }
-function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, starOn, both, onStar, onVeto, onClaim, notes, onSetNote }) {
+function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, starOn, both, onStar, onVeto, onClaim, notes, onSetNote, added, onAddNick, onRemoveNick }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
@@ -1677,7 +1713,11 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
             )}
             <PopLine id={r.n.id} gender={gender} compact noChart />
           </div>
-          <div style={{ fontSize:12, color:C.muted, minHeight:16 }}>{r.n.nicks.length > 0 ? r.n.nicks.join(" · ") : ""}</div>
+          <div style={{ minHeight:16, marginTop:2 }}>
+            {readOnly
+              ? <span style={{ fontSize:12, color:C.muted }}>{r.n.nicks.length > 0 ? r.n.nicks.join(" · ") : ""}</span>
+              : <NickEditor id={r.n.id} nicks={r.n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />}
+          </div>
           <div style={{ height:6, borderRadius:999, marginTop:6, background:C.line }}>
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
           </div>
@@ -1718,15 +1758,16 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onStar, onRemove, 
         ))}
       </div>
       <div className="twocol">
-        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onStar={onStar} />
-        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onStar={onStar} />
+        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onStar={onStar} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onStar={onStar} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
       </div>
       {isOwner(profile) && <ManageNames data={data} profile={profile} onRemove={onRemove} onRestore={onRestore} onVeto={onVeto} onUnveto={onUnveto} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />}
     </div>
   );
 }
-function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes, onSetNote, onUnveto, onVeto, onClaim, onStar }) {
+function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes, onSetNote, onUnveto, onVeto, onClaim, onStar, onAddNick, onRemoveNick }) {
   notes = notes || {};
+  const addnicks = data.addnicks || {};
   const names = namesFor(gender, data.custom, data.removed);
   const cR = data[gender].claire.ratings, aR = data[gender].andrew.ratings;
   const cVeto = data[gender].claire.vetoed, aVeto = data[gender].andrew.vetoed;
@@ -1815,7 +1856,8 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
-            profile={profile} readOnly={readOnly} starOn={myStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} onVeto={(id) => onVeto(gender, profile, id)} onClaim={onClaim} notes={notes} onSetNote={onSetNote} />
+            profile={profile} readOnly={readOnly} starOn={myStar.includes(r.n.id)} both={isCombined && cStar.includes(r.n.id) && aStar.includes(r.n.id)} onStar={(id) => onStar(gender, id)} onVeto={(id) => onVeto(gender, profile, id)} onClaim={onClaim} notes={notes} onSetNote={onSetNote}
+            added={addnicks[r.n.id]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
         ))}
       </ol>
       {unvoted.length > 0 && (
