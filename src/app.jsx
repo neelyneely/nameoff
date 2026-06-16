@@ -595,7 +595,7 @@ function namesFor(gender, custom, removed) {
   const baseNames = new Set(NAMES[gender].map((n) => n.name.toLowerCase()));
   const extra = (custom || [])
     .filter((c) => (c.gender === gender || c.gender === "both") && !baseNames.has(c.name.toLowerCase()))
-    .map((c) => ({ id: c.id, name: c.name, nicks: c.nicks || [], unisex: c.gender === "both", custom: true }));
+    .map((c) => ({ id: c.id, name: c.name, nicks: c.nicks || [], unisex: c.gender === "both", custom: true, by: c.by, byName: c.byName }));
   const rm = new Set(removed || []);
   return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id));
 }
@@ -861,7 +861,8 @@ function App() {
     const taken = new Set([...NAMES.boy, ...NAMES.girl].map((n) => n.id).concat((next.custom || []).map((c) => c.id)));
     const id = uniqueId(slug(name), taken);
     const nicks = nicksStr.split(",").map((s) => s.trim()).filter(Boolean);
-    next.custom = [...(next.custom || []), { id, name: name.trim(), nicks, gender: g }];
+    const byName = (next.profiles && next.profiles[profile]) || PROFILES[profile] || profile || "";
+    next.custom = [...(next.custom || []), { id, name: name.trim(), nicks, gender: g, by: profile, byName }];
     dataRef.current = next; setData(next);
     save({ custom: next.custom });
   };
@@ -1185,12 +1186,13 @@ function AddPanel({ custom, onAdd, onRemove }) {
       <p style={{ fontSize:11, marginTop:8, color:C.muted }}>New names join voting right away and show “popularity &amp; meaning pending” until their SSA ranks and origin are filled in.</p>
       {custom.length > 0 && (
         <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${C.line}` }}>
-          <div style={{ fontSize:12, marginBottom:6, color:C.muted }}>Names you’ve added</div>
+          <div style={{ fontSize:12, marginBottom:6, color:C.muted }}>Added names</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
             {custom.map((c) => (
               <span key={c.id} style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 10px", borderRadius:999, fontSize:12, background:C.bg, border:`1px solid ${C.line}` }}>
                 <b style={{ color:C.ink }}>{c.name}</b>
                 <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.04em", color:C.muted }}>{c.gender === "both" ? "both" : c.gender}</span>
+                {c.byName && <span style={{ fontSize:10, color:C.sage }}>by {c.byName}</span>}
                 <button onClick={() => onRemove(c.id)} className="lift" style={{ color:C.clay }} aria-label={`Remove ${c.name}`}><Ic n="x" s={12} /></button>
               </span>
             ))}
@@ -1291,6 +1293,30 @@ function funcPop(id, gender) {
   });
   return { series: displaySeries(id, gender), funcPct, funcRank, hasVar, spell, nicks, year: raw[raw.length - 1].year };
 }
+// Gender-neutral names: fold girls' + boys' popularity into ONE figure — the total
+// share of all babies given the name, regardless of sex. Cross-sex analogue of the
+// spelling-variant merge. Rank is estimated with the more-used sex's calibration.
+function unisexCombined(id) {
+  const g = funcPop(id, "girl"), b = funcPop(id, "boy");
+  const gp = g ? g.funcPct : null, bp = b ? b.funcPct : null;
+  if (gp == null && bp == null) return { pct: null, rank: null, dom: "girl" };
+  const pct = (gp || 0) + (bp || 0);
+  const dom = (bp || 0) >= (gp || 0) ? "boy" : "girl";
+  return { pct, rank: pct > 0 ? approxRank(pct, dom) : null, dom };
+}
+// Combined boy+girl popularity per year, as an estimated rank, for the trend sparkline.
+function unisexSeries(id) {
+  const gs = displaySeries(id, "girl") || [], bs = displaySeries(id, "boy") || [];
+  if (!gs.length && !bs.length) return null;
+  const byG = {}; gs.forEach((p) => { byG[p.year] = p.rank; });
+  const byB = {}; bs.forEach((p) => { byB[p.year] = p.rank; });
+  const years = [...new Set([...gs, ...bs].map((p) => p.year))].sort((a, b) => a - b);
+  return years.map((y) => {
+    const gp = rankToPct(byG[y], "girl") || 0, bp = rankToPct(byB[y], "boy") || 0;
+    const sum = gp + bp, dom = bp >= gp ? "boy" : "girl";
+    return { year: y, rank: sum > 0 ? approxRank(sum, dom) : null };
+  });
+}
 function fmtRank(rank, approx, compact) {
   if (rank == null) return compact ? "1000+" : "Outside top 1000";
   return (approx ? "≈#" : "#") + rank;
@@ -1308,19 +1334,17 @@ function PopLine({ id, gender, compact = false, noChart = false }) {
     : (fp.funcRank == null ? (compact ? "1000+" : "Outside top 1000")
         : (fp.hasVar ? "≈#" : "US #") + fp.funcRank);
   if (uni) {
-    // Show both genders together so a unisex name reads the same in either round.
-    const g = funcPop(id, "girl"), b = funcPop(id, "boy");
-    const gr = g ? g.funcRank : null, br = b ? b.funcRank : null;
-    const best = gr == null ? br : (br == null ? gr : Math.min(gr, br));
-    tier = tierOf(best);
-    // Only show a gender that's actually ranked (e.g. Sullivan isn't a girls' name).
-    const segs = [];
-    if (gr != null) segs.push(`♀ ${popMode === "pct" ? (fmtPct(g.funcPct) || "<0.01%") : "#" + gr}`);
-    if (br != null) segs.push(`♂ ${popMode === "pct" ? (fmtPct(b.funcPct) || "<0.01%") : "#" + br}`);
-    main = segs.length ? segs.join(" · ") : (popMode === "pct" ? "<0.01%" : (compact ? "1000+" : "Outside top 1000"));
-    sparkGender = (br != null && (gr == null || br <= gr)) ? "boy" : "girl"; // trend of the more-used gender
-    sparkSeries = displaySeries(id, sparkGender);
-    sparkApprox = false;
+    // Gender-neutral: combine both sexes into ONE figure — the total share of all
+    // babies with the name — instead of separate ♀/♂ ranks. We care how many kids
+    // overall share it, not how many of one sex. Mirrors the spelling-variant merge.
+    const uc = unisexCombined(id);
+    tier = tierOf(uc.rank);
+    main = popMode === "pct"
+      ? (fmtPct(uc.pct) || "<0.01%")
+      : (uc.rank == null ? (compact ? "1000+" : "Outside top 1000") : "≈#" + uc.rank);
+    sparkSeries = unisexSeries(id);
+    sparkGender = uc.dom;
+    sparkApprox = true;
   }
   const hasBreakdown = fp.hasVar || (compact && (fp.nicks.length > 0 || !!MEANING[id]));
   const cell = (r, p, approx) => popMode === "pct"
@@ -1414,6 +1438,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar }) {
       </div>
       <div style={{ minHeight:24, marginTop:8, fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</div>
       <div style={{ minHeight:36, marginTop:6, fontSize:12.5, color:C.muted, fontStyle:"italic", lineHeight:1.4 }}>{MEANING[n.id] ? cleanMeaning(MEANING[n.id]) : ""}</div>
+      <div style={{ minHeight:15, fontSize:11, fontWeight:600, color:C.sage }}>{n.byName ? `✨ suggested by ${n.byName}` : ""}</div>
       <div style={{ minHeight:88, marginTop:6, display:"flex", justifyContent:"center", alignItems:"center" }}>
         {fp ? <PopLine id={n.id} gender={gender} />
             : <span style={{ fontSize:11, fontStyle:"italic", color:C.muted }}>Popularity &amp; meaning pending</span>}
@@ -1510,11 +1535,10 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, s
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span className="disp" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{r.n.name}</span>
-            {r.n.custom && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added</span>}
+            {r.n.custom && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{r.n.byName ? `added by ${r.n.byName}` : "added"}</span>}
             {both && <span style={{ fontSize:10, fontWeight:700, padding:"1px 6px", borderRadius:999, background:`${C.ochre}1A`, color:C.ochre }}>★ both</span>}
             {showCombo && r.c != null && (
               <span style={{ fontSize:10, fontWeight:600, padding:"1px 6px", borderRadius:999, background: r.split ? `${C.clay}1A` : C.line }}>
-                {r.split && <span style={{ color:C.clay, fontWeight:700 }}>split · </span>}
                 <span style={{ color:C.claire, fontWeight:700 }}>C#{r.c}</span>
                 <span style={{ color:C.muted }}> · </span>
                 <span style={{ color:C.andrew, fontWeight:700 }}>A#{r.a}</span>
@@ -1551,7 +1575,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onStar, onRemove, onRestore
   const [mode, setMode] = useState("combined");
   // Two rankings: the couple's combined (with agreement/disparity), and the family
   // pool (everyone who isn't Claire or Andrew). No individual tabs.
-  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Fam" }];
+  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Fam and Friends" }];
   const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage stars/notes on the couple's ranking only
   const tabColor = (k) => (k === "combined" ? C.teal : C.sage);
   return (
@@ -1705,7 +1729,7 @@ function ManageNames({ data, onRemove, onRestore }) {
           {list.map((n) => (
             <li key={n.id} style={{ display:"flex", alignItems:"center", gap:6, borderRadius:999, padding:"4px 6px 4px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
               <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{n.name}</span>
-              {n.custom && <span style={{ fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added</span>}
+              {n.custom && <span style={{ fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{n.byName ? `added by ${n.byName}` : "added"}</span>}
               <button onClick={() => onRemove(n.id)} className="lift" aria-label={`Remove ${n.name}`} title="Remove from app"
                 style={{ display:"flex", alignItems:"center", padding:2, borderRadius:999, color:C.muted }}>
                 <Ic n="x" s={12} />
