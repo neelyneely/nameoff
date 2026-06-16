@@ -1645,8 +1645,10 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar, add
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const start = useRef(null);
+  const swiped = useRef(false); // suppress the trailing click after a real drag
   const THRESH = 70;
   const onTouchStart = (e) => {
+    swiped.current = false;
     if (picked) return;
     const t = e.target;
     if (t.closest && t.closest("button, input")) { start.current = null; return; } // let controls work
@@ -1655,7 +1657,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar, add
   const onTouchMove = (e) => {
     if (!start.current || picked) return;
     const p = e.touches[0], ddx = p.clientX - start.current.x, ddy = p.clientY - start.current.y;
-    if (Math.abs(ddx) > Math.abs(ddy)) setDx(ddx); // horizontal intent only (don't fight vertical scroll)
+    if (Math.abs(ddx) > Math.abs(ddy)) { if (Math.abs(ddx) > 8) swiped.current = true; setDx(ddx); }
   };
   const onTouchEnd = () => {
     if (!start.current) { setDragging(false); return; }
@@ -1667,7 +1669,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar, add
   const transform = dx ? `translateX(${dx}px) rotate(${(dx / 30).toFixed(2)}deg)` : baseTransform;
   return (
     <div role="button" tabIndex={picked ? -1 : 0} aria-label={`Pick ${n.name}`}
-      onClick={() => !picked && Math.abs(dx) < 6 && onPick()}
+      onClick={() => { if (swiped.current) { swiped.current = false; return; } if (!picked) onPick(); }}
       onKeyDown={(e) => { if (!picked && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onPick(); } }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
       className="lift" style={{
