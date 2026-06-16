@@ -1921,7 +1921,9 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const guestKeys = data.roster.filter((p) => !isOwner(p.key)).map((p) => p.key);
   const votedGuests = guestKeys.filter((k) => data[gender][k].votes > 0);
   const everyoneScore = (id) => votedGuests.length ? votedGuests.reduce((s, k) => s + (data[gender][k].ratings[id] ?? START), 0) / votedGuests.length : START;
-  const isVetoed = (id) => isCombined ? (cVeto.includes(id) || aVeto.includes(id)) : isPerson ? sel.vetoed.includes(id) : false;
+  // An owner's veto is a shared dealbreaker, so it benches the name in the couple's
+  // AND the Fam-and-friends ranking; a person view uses that person's own vetoes.
+  const isVetoed = (id) => isPerson ? sel.vetoed.includes(id) : (cVeto.includes(id) || aVeto.includes(id));
   const cMatch = data[gender].claire.matches || {}, aMatch = data[gender].andrew.matches || {};
   // "Not yet voted on" (combined view only): neither owner has seen it in a matchup yet.
   const notVotedYet = (id) => isCombined && (cMatch[id] || 0) === 0 && (aMatch[id] || 0) === 0;
@@ -1968,7 +1970,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
     : isEveryone
       ? "No family votes yet (Claire and Andrew aren’t counted here)."
       : `${data.profiles[mode]} hasn’t voted on the ${gender === "boy" ? "boys" : "girls"} yet.`;
-  const vetoLabel = (id) => { if (!isCombined) return data.profiles[mode]; const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w.join(" & "); };
+  const vetoLabel = (id) => { if (isPerson) return data.profiles[mode]; const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w.join(" & "); };
 
   return (
     <div style={{ flex:1, minWidth:0 }}>
