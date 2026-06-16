@@ -792,6 +792,24 @@ function Celebrate({ data, onClose }) {
   );
 }
 
+// Bottom toast with an optional Undo action. Auto-dismisses.
+function Toast({ data, onClose }) {
+  React.useEffect(() => {
+    if (!data) return;
+    const t = setTimeout(onClose, 5000);
+    return () => clearTimeout(t);
+  }, [data]); // eslint-disable-line
+  if (!data) return null;
+  return (
+    <div style={{ position:"fixed", left:0, right:0, bottom:18, display:"flex", justifyContent:"center", zIndex:55, pointerEvents:"none", padding:"0 12px" }}>
+      <div style={{ pointerEvents:"auto", display:"flex", alignItems:"center", gap:16, maxWidth:420, background:C.ink, color:C.paper, padding:"10px 16px", borderRadius:999, boxShadow:"0 8px 28px rgba(0,0,0,.28)", fontSize:13 }}>
+        <span>{data.msg}</span>
+        {data.onUndo && <button onClick={() => { data.onUndo(); onClose(); }} className="lift" style={{ fontWeight:800, color:C.ochre, fontSize:13, textTransform:"uppercase", letterSpacing:"0.04em" }}>Undo</button>}
+      </div>
+    </div>
+  );
+}
+
 /* ============================== component ================================ */
 function App() {
   const [data, setData] = useState(null);
@@ -804,6 +822,8 @@ function App() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [celebrate, setCelebrate] = useState(null); // transient match/milestone overlay
   const celebrateNow = (payload) => { setCelebrate(payload); fireConfetti(payload.match ? 60 : 44); };
+  const [toast, setToast] = useState(null); // bottom toast with optional Undo
+  const showToast = (msg, onUndo) => setToast({ msg, onUndo });
   const [undo, setUndo] = useState([]); // in-session stack of reversible matchups (per profile)
   const [showAdd, setShowAdd] = useState(false);
   const [showSync, setShowSync] = useState(false);
@@ -957,6 +977,7 @@ function App() {
 
   const vetoCurrent = (id) => {
     const g = voteGender;
+    const nm = findName(namesFor(g, dataRef.current.custom, dataRef.current.removed), id).name;
     const next = clone(dataRef.current);
     if (!next[g][profile].vetoed.includes(id)) next[g][profile].vetoed.push(id); // veto is per-gender
     dataRef.current = next; setData(next); setPicked(null);
@@ -964,6 +985,7 @@ function App() {
     if (votable(next, g)) { setPair(pickPair(poolFor(next, g), next[g][profile], null)); }
     else if (votable(next, otherG(g))) { setVoteGender(otherG(g)); setBlockCount(0); }
     else { setPair(null); }
+    showToast(`Vetoed ${nm}`, () => unveto(g, profile, id));
   };
   const unveto = (g, profileKey, id) => {
     const next = clone(dataRef.current);
@@ -973,10 +995,12 @@ function App() {
   };
   // Veto a specific name by id (used from the Rankings list, not the vote pair).
   const vetoName = (g, profileKey, id) => {
+    const nm = findName(namesFor(g, dataRef.current.custom, dataRef.current.removed), id).name;
     const next = clone(dataRef.current);
     if (!next[g][profileKey].vetoed.includes(id)) next[g][profileKey].vetoed.push(id);
     dataRef.current = next; setData(next);
     save({ [kCore(g, profileKey)]: coreOf(next[g][profileKey]) });
+    showToast(`Vetoed ${nm}`, () => unveto(g, profileKey, id));
   };
 
   const addName = (name, nicksStr, g) => {
@@ -1034,6 +1058,8 @@ function App() {
   };
 
   const removeName = (id) => {
+    const allNow = [...namesFor("girl", dataRef.current.custom, dataRef.current.removed), ...namesFor("boy", dataRef.current.custom, dataRef.current.removed)];
+    const nm = findName(allNow, id).name;
     const next = clone(dataRef.current);
     next.removed = Array.from(new Set([...(next.removed || []), id]));
     // Removing supersedes vetoes: clear any veto for this id (both people, both
@@ -1049,6 +1075,7 @@ function App() {
     dataRef.current = next; setData(next);
     save(updates);
     if (pair && pair.includes(id)) setPair(pickPair(poolFor(next, voteGender), next[voteGender][profile], null));
+    showToast(`Removed ${nm}`, () => restoreName(id));
   };
   const restoreName = (id) => {
     const next = clone(dataRef.current);
@@ -1173,6 +1200,7 @@ function App() {
   return (
     <PopModeCtx.Provider value={popMode}>
     <Celebrate data={celebrate} onClose={() => setCelebrate(null)} />
+    <Toast data={toast} onClose={() => setToast(null)} />
     <div className="wrap">
       <Header me={data.profiles[profile]} myColor={pColor(profile)} onSwitch={switchMe}
         showAdd={showAdd} setShowAdd={setShowAdd}
@@ -1613,15 +1641,41 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar, add
   const popMode = React.useContext(PopModeCtx);
   const fp = funcPop(n.id, gender);
   const popNicks = (fp ? fp.nicks : []).filter((nk) => nk.rank != null || nk.pct != null);
+  // Swipe-to-pick on touch devices: drag a card sideways past a threshold to choose it.
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const start = useRef(null);
+  const THRESH = 70;
+  const onTouchStart = (e) => {
+    if (picked) return;
+    const t = e.target;
+    if (t.closest && t.closest("button, input")) { start.current = null; return; } // let controls work
+    const p = e.touches[0]; start.current = { x: p.clientX, y: p.clientY }; setDragging(true);
+  };
+  const onTouchMove = (e) => {
+    if (!start.current || picked) return;
+    const p = e.touches[0], ddx = p.clientX - start.current.x, ddy = p.clientY - start.current.y;
+    if (Math.abs(ddx) > Math.abs(ddy)) setDx(ddx); // horizontal intent only (don't fight vertical scroll)
+  };
+  const onTouchEnd = () => {
+    if (!start.current) { setDragging(false); return; }
+    const hit = Math.abs(dx) > THRESH && !picked;
+    start.current = null; setDragging(false); setDx(0);
+    if (hit) onPick();
+  };
+  const baseTransform = chosen ? "translateY(-3px)" : "none";
+  const transform = dx ? `translateX(${dx}px) rotate(${(dx / 30).toFixed(2)}deg)` : baseTransform;
   return (
     <div role="button" tabIndex={picked ? -1 : 0} aria-label={`Pick ${n.name}`}
-      onClick={() => !picked && onPick()}
+      onClick={() => !picked && Math.abs(dx) < 6 && onPick()}
       onKeyDown={(e) => { if (!picked && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onPick(); } }}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
       className="lift" style={{
         flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", borderRadius:16, padding:"44px 16px 22px", textAlign:"center", position:"relative", background:gCard(gender),
-        border:`2px solid ${chosen ? accent : "transparent"}`, minHeight:180,
+        border:`2px solid ${(chosen || Math.abs(dx) > THRESH) ? accent : "transparent"}`, minHeight:180,
         boxShadow: chosen ? `0 0 0 4px ${accent}22` : "0 2px 0 rgba(0,0,0,0.05)",
-        opacity: dim ? 0.4 : 1, transform: chosen ? "translateY(-3px)" : "none", cursor: picked ? "default" : "pointer",
+        opacity: dim ? 0.4 : 1, transform, transition: dragging ? "none" : "transform .22s ease, border-color .15s ease", touchAction:"pan-y",
+        cursor: picked ? "default" : "pointer",
       }}>
       {onStar && (
         <button onClick={(e) => { e.stopPropagation(); onStar(); }} aria-label={starred ? `Unstar ${n.name}` : `Star ${n.name}`} title="Favorite"
@@ -1715,6 +1769,7 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, on
         </button>
         <button onClick={onSkip} disabled={!!picked} className="lift" style={{ fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:999, color:C.muted, border:`1px solid ${C.line}`, background:C.paper }}>Can’t decide, skip</button>
       </div>
+      <p style={{ textAlign:"center", fontSize:11, color:C.muted, margin:"10px 0 0" }}>Tap or swipe a card to pick · ←/→ keys, space to skip</p>
     </div>
   );
 }
