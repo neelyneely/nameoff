@@ -344,6 +344,9 @@ const NICKS_N = {};
 [...NAMES.boy, ...NAMES.girl].forEach((n) => { NICKS_N[n.id] = (n.nicks || []).length; });
 CANDS.forEach((c) => { NICKS_N[c.id] = (c.nicks || []).length; });
 Object.keys(FEAT).forEach((id) => { FEAT[id].nk = NICKS_N[id] ? 1 : 0; });
+// id -> display name for candidates (used by the "Passed" list).
+const CAND_NAME = {};
+[...CAND.boy, ...CAND.girl, ...CAND.unisex].forEach((c) => { CAND_NAME[c.id] = c.name; });
 
 // Most recent known rank for a name/gender (null = not ranked).
 function latestRank(id, g) {
@@ -376,6 +379,9 @@ function suggestNames(data, profile, gender) {
   const present = new Set(roster.map((x) => x.id));
   const removed = new Set(data.removed || []);
   const explore = pg.explore || {};
+  // Names the voter said "Not for me" — hidden, but NOT trained on (the dislike
+  // is usually about the specific name, not its style; see Quinn).
+  const dismissed = pg.dismissed || {};
   // Signed, confidence-scaled signal from the mash-up "explore" tallies.
   const exWeight = (id) => {
     const e = explore[id]; if (!e) return 0;
@@ -410,16 +416,16 @@ function suggestNames(data, profile, gender) {
     bump("nick:" + (f.nk ? 1 : 0), wt);
   };
   roster.forEach((nm) => train(nm.id));
-  Object.keys(explore).forEach((id) => { if (FEAT[id] && !present.has(id)) train(id); });
+  Object.keys(explore).forEach((id) => { if (FEAT[id] && !present.has(id) && !dismissed[id]) train(id); });
   const learned = {};
   Object.keys(acc).forEach((k) => { learned[k] = acc[k].s / (2 + acc[k].n); });
   const alpha = Math.max(0, Math.min(1, 1 - (pg.votes || 0) / 15)); // prior weight
   const P = (k) => (learned[k] || 0) + alpha * (PRIOR[k] || 0);
   const DIRECT = 0.6; // weight on a candidate's OWN mash-up signal
-  // 3. Score unseen candidates (skip roster/removed, hide "pass both" names).
+  // 3. Score unseen candidates (skip roster/removed/dismissed, hide "pass both").
   const pool = [...(CAND[gender] || []), ...CAND.unisex];
   return pool
-    .filter((c) => FEAT[c.id] && !present.has(c.id) && !removed.has(c.id))
+    .filter((c) => FEAT[c.id] && !present.has(c.id) && !removed.has(c.id) && !dismissed[c.id])
     .filter((c) => { const e = explore[c.id]; return !(e && e.s <= -3); })
     .map((c) => {
       const f = FEAT[c.id];
@@ -594,7 +600,7 @@ function namesFor(gender, custom, removed) {
   return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id));
 }
 const findName = (names, id) => names.find((n) => n.id === id) || { id, name: id, nicks: [] };
-const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred, explore: pg.explore || {} });
+const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred, explore: pg.explore || {}, dismissed: pg.dismissed || {} });
 const trimHistory = (h) => {
   let a = h.slice(-HISTORY_CAP);
   while (JSON.stringify(a).length > 45000 && a.length > 10) a = a.slice(Math.ceil(a.length * 0.1));
@@ -604,7 +610,7 @@ const trimHistory = (h) => {
 function emptyPG(gender, custom) {
   const ratings = {}, matches = {};
   namesFor(gender, custom).forEach((n) => { ratings[n.id] = START; matches[n.id] = 0; });
-  return { ratings, matches, votes: 0, vetoed: [], starred: [], history: [], explore: {} };
+  return { ratings, matches, votes: 0, vetoed: [], starred: [], history: [], explore: {}, dismissed: {} };
 }
 function assemble(map) {
   const custom = Array.isArray(map.custom) ? map.custom : [];
@@ -624,7 +630,7 @@ function assemble(map) {
     const pg = {
       ratings: core.ratings || {}, matches: core.matches || {},
       votes: core.votes || 0, vetoed: core.vetoed || [], starred: core.starred || [],
-      explore: core.explore || {},
+      explore: core.explore || {}, dismissed: core.dismissed || {},
       history: Array.isArray(hist) ? hist : [],
     };
     namesFor(g, custom).forEach((n) => {
@@ -904,6 +910,25 @@ function App() {
     dataRef.current = next; setData(next);
     save({ [kCore(g, profile)]: coreOf(cur) });
   };
+  // "Not for me" on a For-you suggestion: hide the name (does NOT train the
+  // style model). reason is optional free text the voter can add later.
+  const dismissSuggestion = (g, id, reason) => {
+    const next = clone(dataRef.current);
+    const cur = next[g][profile];
+    cur.dismissed = { ...(cur.dismissed || {}) };
+    const prev = cur.dismissed[id] || {};
+    cur.dismissed[id] = { r: reason != null ? reason : (prev.r || ""), t: prev.t || Date.now() };
+    dataRef.current = next; setData(next);
+    save({ [kCore(g, profile)]: coreOf(cur) });
+  };
+  const restoreSuggestion = (g, id) => {
+    const next = clone(dataRef.current);
+    const cur = next[g][profile];
+    cur.dismissed = { ...(cur.dismissed || {}) };
+    delete cur.dismissed[id];
+    dataRef.current = next; setData(next);
+    save({ [kCore(g, profile)]: coreOf(cur) });
+  };
   const setNote = (id, text) => {
     const next = clone(dataRef.current);
     const notes = { ...(next.notes || {}) };
@@ -979,7 +1004,7 @@ function App() {
       {view === "rankings" && (unlocked
         ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onStar={toggleStar} onRemove={removeName} onRestore={restoreName} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
-      {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} />}
+      {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} />}
       {view === "trends" && (unlocked
         ? <Trends data={data} profile={profile} />
         : <LockMsg myVotes={myVotes} />)}
@@ -1995,13 +2020,18 @@ function Trends({ data, profile }) {
 }
 
 /* ---------------------- "For you" suggestions ---------------------------- */
-function ForYou({ data, profile, initialGender, onAdd, onReact }) {
+function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore }) {
   const [g, setG] = useState(initialGender || "girl");
   const [lastAdded, setLastAdded] = useState(null);
+  const [lastDismissed, setLastDismissed] = useState(null);
+  const [reasonText, setReasonText] = useState("");
+  const [showPassed, setShowPassed] = useState(false);
   const [round, setRound] = useState(0);
   const [pair, setPair] = useState(null);
   const votes = data[g][profile] ? (data[g][profile].votes || 0) : 0;
   const explore = (data[g][profile] || {}).explore || {};
+  const dismissed = (data[g][profile] || {}).dismissed || {};
+  const passedIds = Object.keys(dismissed);
   const tuned = Object.keys(explore).length;
   const sugg = suggestNames(data, profile, g).slice(0, 12);
 
@@ -2018,8 +2048,17 @@ function ForYou({ data, profile, initialGender, onAdd, onReact }) {
     const c = item.c;
     const gender = item.f.lean === "u" ? "both" : g;
     onAdd(c.name, (c.nicks || []).join(", "), gender);
-    setLastAdded({ name: c.name, gender });
+    setLastAdded({ name: c.name, gender }); setLastDismissed(null);
     setRound((r) => r + 1);
+  };
+  const dismiss = (item) => {
+    onDismiss(g, item.c.id);
+    setLastDismissed({ id: item.c.id, name: item.c.name }); setReasonText(""); setLastAdded(null);
+    setRound((r) => r + 1);
+  };
+  const saveReason = () => {
+    if (lastDismissed) onDismiss(g, lastDismissed.id, reasonText.trim());
+    setLastDismissed(null); setReasonText("");
   };
 
   return (
@@ -2073,6 +2112,22 @@ function ForYou({ data, profile, initialGender, onAdd, onReact }) {
         </div>
       )}
 
+      {lastDismissed && (
+        <div style={{ marginBottom:14, padding:"11px 13px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
+          <div style={{ fontSize:13, color:C.ink, marginBottom:7 }}>
+            Hid <b style={{ fontFamily:DISPLAY }}>{lastDismissed.name}</b> — you won’t see it again. <span style={{ color:C.muted }}>Mind sharing why? Totally optional, and it helps us suggest better.</span>
+          </div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            <input value={reasonText} onChange={(e) => setReasonText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") saveReason(); }}
+              placeholder="e.g. reminds me of someone, too popular, hard to spell…"
+              style={{ flex:1, minWidth:180, fontSize:13, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.line}`, background:C.bg, color:C.ink }} />
+            <button onClick={saveReason} className="lift" style={{ fontSize:12.5, fontWeight:700, padding:"7px 14px", borderRadius:8, background:C.teal, color:"#fff" }}>Save</button>
+            <button onClick={() => setLastDismissed(null)} className="lift" style={{ fontSize:12.5, fontWeight:600, padding:"7px 12px", borderRadius:8, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>No thanks</button>
+          </div>
+        </div>
+      )}
+
       {sugg.length === 0 ? (
         <p style={{ fontSize:13, color:C.muted }}>You’ve added all the close matches — keep voting and check back.</p>
       ) : (
@@ -2099,13 +2154,46 @@ function ForYou({ data, profile, initialGender, onAdd, onReact }) {
                     ))}
                   </div>
                 </div>
-                <button onClick={() => add(item)} className="lift"
-                  style={{ flexShrink:0, display:"flex", alignItems:"center", gap:5, padding:"8px 14px", borderRadius:999, fontWeight:700, fontSize:13, background:gColor(g), color:"#fff" }}>
-                  <Ic n="plus" s={14} c="#fff" /> Add
-                </button>
+                <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"stretch", gap:6 }}>
+                  <button onClick={() => add(item)} className="lift"
+                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"8px 14px", borderRadius:999, fontWeight:700, fontSize:13, background:gColor(g), color:"#fff" }}>
+                    <Ic n="plus" s={14} c="#fff" /> Add
+                  </button>
+                  <button onClick={() => dismiss(item)} className="lift"
+                    style={{ fontSize:11.5, fontWeight:600, padding:"4px 10px", borderRadius:999, background:"transparent", color:C.muted }}>
+                    Not for me
+                  </button>
+                </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {passedIds.length > 0 && (
+        <div style={{ marginTop:18 }}>
+          <button onClick={() => setShowPassed((s) => !s)} className="lift"
+            style={{ display:"flex", alignItems:"center", gap:6, fontSize:12.5, fontWeight:600, color:C.muted }}>
+            <Ic n={showPassed ? "x" : "list"} s={13} /> Passed names ({passedIds.length})
+          </button>
+          {showPassed && (
+            <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:10 }}>
+              {passedIds.map((id) => (
+                <div key={id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <span style={{ fontFamily:DISPLAY, fontSize:16, color:C.ink }}>{CAND_NAME[id] || id}</span>
+                    {dismissed[id] && dismissed[id].r
+                      ? <span style={{ fontSize:12, color:C.muted, marginLeft:8 }}>“{dismissed[id].r}”</span>
+                      : <span style={{ fontSize:11.5, color:C.line, marginLeft:8, fontStyle:"italic" }}>no reason given</span>}
+                  </div>
+                  <button onClick={() => onRestore(g, id)} className="lift"
+                    style={{ flexShrink:0, fontSize:12, fontWeight:600, padding:"5px 11px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>
+                    Bring back
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
