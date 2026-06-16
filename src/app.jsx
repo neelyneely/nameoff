@@ -429,6 +429,7 @@ function App() {
   const [sync, setSync] = useState({ on: store.configured, status: store.configured ? "syncing" : "local", at: null, err: "" });
   const dataRef = useRef(null);
   const savingRef = useRef(false);
+  const genRef = useRef(0); // bumps on every local change; lets a background pull skip stale results
   const pendingPairRef = useRef(null); // forces the pair effect to use a specific matchup (for go-back)
 
   const load = useCallback(async () => {
@@ -450,8 +451,11 @@ function App() {
     if (!store.configured) return;
     const tick = async () => {
       if (savingRef.current || document.hidden) return;
+      const gen = genRef.current;
       try {
         const map = await store.getAll();
+        // A local change happened while we were fetching — don't clobber it with stale data.
+        if (savingRef.current || genRef.current !== gen) return;
         const d = assemble(map);
         dataRef.current = d; setData(d);
         setSync((s) => ({ ...s, status: "synced", at: Date.now(), err: "" }));
@@ -463,7 +467,7 @@ function App() {
   }, [sync.on]);
 
   const save = useCallback(async (updates) => {
-    savingRef.current = true;
+    savingRef.current = true; genRef.current++;
     setSync((s) => ({ ...s, status: s.on ? "saving" : "local" }));
     try {
       await store.setKeys(updates);
@@ -565,7 +569,7 @@ function App() {
   const vetoCurrent = (id) => {
     const g = voteGender;
     const next = clone(dataRef.current);
-    if (!next[g][profile].vetoed.includes(id)) next[g][profile].vetoed.push(id);
+    if (!next[g][profile].vetoed.includes(id)) next[g][profile].vetoed.push(id); // veto is per-gender
     dataRef.current = next; setData(next); setPicked(null);
     save({ [kCore(g, profile)]: coreOf(next[g][profile]) });
     if (votable(next, g)) { setPair(pickPair(poolFor(next, g), next[g][profile], null)); }
@@ -1321,14 +1325,6 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       : `${data.profiles[mode]} hasn’t voted on the ${gender === "boy" ? "boys" : "girls"} yet.`;
   const vetoLabel = (id) => { if (!isCombined) return data.profiles[mode]; const w = []; if (cVeto.includes(id)) w.push("Claire"); if (aVeto.includes(id)) w.push("Andrew"); return w.join(" & "); };
 
-  // agreement / disagreement summary for the combined view
-  const bothVoted = cVotes > 0 && aVotes > 0;
-  const pool = names.filter((n) => !cVeto.includes(n.id) && !aVeto.includes(n.id));
-  const Np = pool.length;
-  const scored = pool.map((n) => ({ n, c: cRank[n.id], a: aRank[n.id], gap: Math.abs(cRank[n.id] - aRank[n.id]), avg: (cRank[n.id] + aRank[n.id]) / 2 }));
-  const agree = scored.filter((x) => x.avg <= Np / 2).sort((p, q) => p.gap - q.gap || p.avg - q.avg).slice(0, 3);
-  const clash = [...scored].sort((p, q) => q.gap - p.gap).filter((x) => x.gap >= splitGap).slice(0, 3);
-
   return (
     <div style={{ flex:1, minWidth:0 }}>
       <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
@@ -1339,22 +1335,6 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
           <p style={{ fontSize:14, margin:0 }}>{emptyMsg}</p>
         </div>
       ) : (<>
-      {isCombined && bothVoted && (agree.length > 0 || clash.length > 0) && (
-        <div style={{ marginBottom:12, borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
-          {agree.length > 0 && (
-            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom: clash.length ? 8 : 0 }}>
-              <span style={{ fontSize:11, fontWeight:700, color:C.sage, textTransform:"uppercase", letterSpacing:"0.04em", display:"inline-flex", alignItems:"center", gap:4 }}><Ic n="check" s={12} c={C.sage} /> You both love</span>
-              {agree.map((x) => <span key={x.n.id} style={{ fontSize:12, fontWeight:700, padding:"2px 9px", borderRadius:999, background:`${C.sage}1A`, color:C.sage }}>{x.n.name}</span>)}
-            </div>
-          )}
-          {clash.length > 0 && (
-            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-              <span style={{ fontSize:11, fontWeight:700, color:C.clay, textTransform:"uppercase", letterSpacing:"0.04em" }}>↔ You’re split on</span>
-              {clash.map((x) => <span key={x.n.id} style={{ fontSize:12, fontWeight:700, padding:"2px 9px", borderRadius:999, background:`${C.clay}1A`, color:C.clay }}>{x.n.name} <span style={{ fontWeight:700 }}><span style={{ color:C.claire }}>C#{x.c}</span>·<span style={{ color:C.andrew }}>A#{x.a}</span></span></span>)}
-            </div>
-          )}
-        </div>
-      )}
       <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>
         {isCombined
           ? (combineBoth
@@ -1545,7 +1525,7 @@ function ByNameTrends({ pg, names, profileName }) {
   const styleOf = (id) => styleFor(Math.max(0, ranked.findIndex((n) => n.id === id)));
   const [sel, setSel] = useState(() => ranked.slice(0, 5).map((n) => n.id)); // top 5 by default
   const [emph, setEmph] = useState(null);
-  if (!pg.history || pg.history.length < 2) return trendEmpty(`Cast a few votes as ${profileName} to start a trend line.`);
+  if (!pg.history || pg.history.length < 2) return trendEmpty("Vote on a few names to start the trend lines.");
   const lines = sel.map((id) => {
     const st = styleOf(id);
     return { id, name: findName(names, id).name, color: st.color, dash: st.dash,
@@ -1556,7 +1536,7 @@ function ByNameTrends({ pg, names, profileName }) {
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
-        {profileName}’s rating over {pg.votes} votes. Showing the top {Math.min(5, ranked.length)} by default. The number is its current rank — tap a name to add or remove it, double-tap to solo it, or hover to highlight.
+        {profileName}’s combined ranking over {pg.votes} votes. Showing the top {Math.min(5, ranked.length)} by default — the number is each name’s current rank. Tap to add or remove, double-tap to solo, hover to highlight.
       </p>
       <TrendChart lines={lines} emph={emph} endLabels />
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
@@ -1614,28 +1594,33 @@ How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> ove
     </div>
   );
 }
-// Scatter that plots each name by two rank maps. Rank 1 sits top-right (loved by
-// both axes); opposite corners are disagreements.
-function ScatterCompare({ names, xr, yr, corners }) {
+// Scatter that plots each name by two rank maps, with named directional axes:
+// further right = more loved on the x axis, higher = more loved on the y axis.
+function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = C.ink, agreeColor = C.teal, passColor = C.clay }) {
   const pts = names.map((n) => ({ n, x: xr[n.id], y: yr[n.id] })).filter((p) => p.x != null && p.y != null);
   if (pts.length < 2) return trendEmpty("Not enough names ranked yet.");
   const N = Math.max(names.length, 2);
-  const S = 360, pad = 30;
-  const px = (r) => pad + (1 - (r - 1) / (N - 1)) * (S - 2 * pad); // rank 1 -> right
-  const py = (r) => pad + ((r - 1) / (N - 1)) * (S - 2 * pad);     // rank 1 -> top
-  const mid = (N + 1) / 2;
+  const S = 360, padL = 12, padR = 74, padT = 20, padB = 32;
+  const px = (r) => padL + (1 - (r - 1) / (N - 1)) * (S - padL - padR); // rank 1 -> right
+  const py = (r) => padT + ((r - 1) / (N - 1)) * (S - padT - padB);     // rank 1 -> top
+  // Color by lean: near the diagonal = agree (both love) or both-pass; off it = whoever ranks it higher.
+  const dotColor = (x, y) => {
+    const gap = Math.abs(x - y), avg = (x + y) / 2;
+    if (gap <= N / 6) return avg <= N / 2 ? agreeColor : passColor;
+    return y < x ? yColor : xColor;
+  };
+  const legend = [[yColor, `${yName} leans`], [xColor, `${xName} leans`], [agreeColor, "Both love"], [passColor, "Both pass"]];
   return (
     <div style={{ borderRadius:12, padding:10, background:C.paper, border:`1px solid ${C.line}` }}>
       <svg viewBox={`0 0 ${S} ${S}`} style={{ width:"100%", height:"auto", display:"block", overflow:"visible" }}>
-        <line x1={px(mid)} x2={px(mid)} y1={pad} y2={S - pad} stroke={C.line} strokeDasharray="3 3" />
-        <line x1={pad} x2={S - pad} y1={py(mid)} y2={py(mid)} stroke={C.line} strokeDasharray="3 3" />
-        <text x={S - pad} y={pad - 11} textAnchor="end" fontSize="11" fontWeight="800" fill={C.sage}>{corners.tr}</text>
-        <text x={pad} y={pad - 11} textAnchor="start" fontSize="11" fontWeight="700" fill={C.muted}>{corners.tl}</text>
-        <text x={pad} y={S - pad + 18} textAnchor="start" fontSize="11" fontWeight="700" fill={C.muted}>{corners.bl}</text>
-        <text x={S - pad} y={S - pad + 18} textAnchor="end" fontSize="11" fontWeight="700" fill={C.clay}>{corners.br}</text>
+        {/* L-shaped axes */}
+        <line x1={padL} y1={padT} x2={padL} y2={S - padB} stroke={C.line} strokeWidth="1.5" />
+        <line x1={padL} y1={S - padB} x2={S - padR} y2={S - padB} stroke={C.line} strokeWidth="1.5" />
+        {/* axis labels: the "loves it" direction */}
+        <text x={padL} y={padT - 7} textAnchor="start" fontSize="11.5" fontWeight="800" fill={yColor}>↑ {yName} loves</text>
+        <text x={S - padR} y={S - padB + 20} textAnchor="end" fontSize="11.5" fontWeight="800" fill={xColor}>{xName} loves →</text>
         {pts.map((p) => {
-          const gap = Math.abs(p.x - p.y);
-          const col = gap >= N / 3 ? C.clay : (gap <= N / 8 ? C.sage : C.ochre);
+          const col = dotColor(p.x, p.y);
           return (
             <g key={p.n.id}>
               <circle cx={px(p.x)} cy={py(p.y)} r="4.5" fill={col} />
@@ -1644,6 +1629,9 @@ function ScatterCompare({ names, xr, yr, corners }) {
           );
         })}
       </svg>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:12, marginTop:8, fontSize:10.5, color:C.muted }}>
+        {legend.map(([c, l]) => <span key={l} style={{ display:"flex", alignItems:"center", gap:5 }}><span style={{ width:9, height:9, borderRadius:999, background:c }} />{l}</span>)}
+      </div>
     </div>
   );
 }
@@ -1654,7 +1642,7 @@ function AgreementView({ data, gender, names }) {
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>Each name by <b style={{ color:C.claire }}>Claire</b>’s rank (further right = she loves it) and <b style={{ color:C.andrew }}>Andrew</b>’s rank (higher = he loves it). Top-right corner = you both love it; opposite corners are clashes.</p>
-      <ScatterCompare names={names} xr={xr} yr={yr} corners={{ tr:"You both ❤", tl:"Andrew’s picks", br:"Claire’s picks", bl:"Both pass" }} />
+      <ScatterCompare names={names} xr={xr} yr={yr} xName="Claire" yName="Andrew" xColor={C.claire} yColor={C.andrew} />
     </div>
   );
 }
@@ -1672,9 +1660,28 @@ function FamVsUsView({ data, gender, names }) {
   return (
     <div>
       <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>Each name by <b style={{ color:C.teal }}>your</b> combined rank (further right = you two love it) and the <b style={{ color:C.sage }}>family</b>’s rank (higher = they love it). Opposite corners are where you and the family disagree.</p>
-      <ScatterCompare names={names} xr={xr} yr={yr} corners={{ tr:"Everyone ❤", tl:"Fam favors", br:"You favor", bl:"Everyone passes" }} />
+      <ScatterCompare names={names} xr={xr} yr={yr} xName="You two" yName="Family" xColor={C.teal} yColor={C.sage} agreeColor={C.ochre} passColor={C.clay} />
     </div>
   );
+}
+// Merge Claire's and Andrew's vote histories by time into one combined-rating
+// timeline, so "Compare names" shows the couple's trajectory, not one person's.
+function combinePg(data, gender, names) {
+  const c = data[gender].claire, a = data[gender].andrew;
+  const evs = [];
+  (c.history || []).forEach((h) => evs.push({ t: h.t || 0, who: "c", r: h.r }));
+  (a.history || []).forEach((h) => evs.push({ t: h.t || 0, who: "a", r: h.r }));
+  evs.sort((x, y) => x.t - y.t);
+  let lc = {}, la = {};
+  const history = evs.map((e, i) => {
+    if (e.who === "c") lc = e.r; else la = e.r;
+    const r = {};
+    names.forEach((n) => { r[n.id] = Math.round(((lc[n.id] ?? START) + (la[n.id] ?? START)) / 2); });
+    return { m: i + 1, t: e.t, r };
+  });
+  const ratings = {};
+  names.forEach((n) => { ratings[n.id] = ((c.ratings[n.id] ?? START) + (a.ratings[n.id] ?? START)) / 2; });
+  return { ratings, history, votes: (c.votes || 0) + (a.votes || 0), vetoed: [], starred: [] };
 }
 function Trends({ data, profile }) {
   const [mode, setMode] = useState("byName");
@@ -1692,7 +1699,7 @@ function Trends({ data, profile }) {
           ))}
         </div>
       </div>
-      {mode === "byName" && <ByNameTrends pg={data[g][profile]} names={names} profileName={data.profiles[profile] || "You"} />}
+      {mode === "byName" && <ByNameTrends key={g} pg={combinePg(data, g, names)} names={names} profileName={"Claire & Andrew"} />}
       {mode === "compare" && <CompareTrends data={data} gender={g} names={names} />}
       {mode === "agree" && <AgreementView data={data} gender={g} names={names} />}
       {mode === "fam" && <FamVsUsView data={data} gender={g} names={names} />}
