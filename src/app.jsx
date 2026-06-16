@@ -106,6 +106,10 @@ const POP = {
   callan:     { boy: { 2020:434, 2021:374, 2022:354, 2023:339, 2024:242, 2025:190 } },
   calvin:     { boy: { 2020:144, 2021:145, 2022:148, 2023:152, 2024:140, 2025:132 } },
   mcallister: { boy: { 2025:null } },
+  conall:     { boy: { 2025:null } },
+  seamus:     { boy: { 2025:null } },
+  lennox:     { boy: { 2020:292, 2021:254, 2022:248, 2023:265, 2024:264, 2025:289 } },
+  "jean-ralphio": { boy: { 2025:null } },
   // nickname-only entries, shown next to their formal name via COMBINE
   finn:       { boy: { 2020:179, 2021:184, 2022:177, 2023:187, 2024:198, 2025:206 } },
   jack:       { boy: { 2020:21,  2021:11,  2022:15,  2023:14,  2024:15,  2025:15  } },
@@ -128,6 +132,9 @@ const POP = {
   merritt:  { girl: { 2020:null, 2021:null, 2022:null, 2023:null, 2024:null, 2025:703 } },
   maira:    { girl: { 2025:null } },
   fiona:    { girl: { 2020:295, 2021:299, 2022:360, 2023:400, 2024:405, 2025:470 } },
+  wren:     { girl: { 2020:360, 2021:252, 2022:184, 2023:195, 2024:213, 2025:231 } },
+  maeve:    { girl: { 2020:174, 2021:124, 2022:103, 2023:73, 2024:75, 2025:76 } },
+  niamh:    { girl: { 2025:null } },
   // unisex (both brackets)
   lennon:   { girl: { 2020:299, 2021:238, 2022:228, 2023:243, 2024:235, 2025:214 },
               boy:  { 2020:691, 2021:673, 2022:663, 2023:756, 2024:786, 2025:808 } },
@@ -136,6 +143,8 @@ const POP = {
   rory:     { girl: { 2020:458, 2021:399, 2022:336, 2023:305, 2024:287, 2025:230 },
               boy:  { 2020:330, 2021:295, 2022:280, 2023:242, 2024:227, 2025:199 } },
   shae:     { girl: { 2020:934, 2021:903, 2022:914, 2023:1000, 2024:null, 2025:null }, boy: { 2025:null } },
+  walker:   { girl: { 2025:null },
+              boy:  { 2020:206, 2021:130, 2022:78, 2023:85, 2024:82, 2025:78 } },
   // shared nickname (girl)
   winnie:   { girl: { 2020:771, 2021:693, 2022:592, 2023:611, 2024:548, 2025:475 } },
   sunny:    { girl: { 2020:691, 2021:642, 2022:553, 2023:406, 2024:370, 2025:390 } },
@@ -149,6 +158,7 @@ const COMBINE = {
   mcallister: { boy: [{ ids:["mack","mac"], label:"Mack/Mac" }, { id:"allister", label:"Allister" }] },
   rowan:      { girl: [{ id:"winnie", label:"Winnie" }] },
   lowen:      { girl: [{ id:"winnie", label:"Winnie" }] },
+  wren:       { girl: [{ id:"winnie", label:"Winnie" }] },
   sullivan:   { girl: [{ id:"sunny", label:"Sunny" }] },
 };
 // 2025 share of US births of that sex (percent). Only ranked names have a value.
@@ -159,6 +169,7 @@ const PCT = {
   lennon:{girl:0.081, boy:0.017}, sullivan:{boy:0.059}, rory:{girl:0.076, boy:0.096},
   finn:{boy:0.093}, jack:{boy:0.477}, cal:{boy:0.030}, mack:{boy:0.036}, mac:{boy:0.021}, allister:{boy:0.014},
   shawn:{boy:0.022}, callen:{boy:0.032}, winnie:{girl:0.037}, sunny:{girl:0.045},
+  maeve:{girl:0.17}, wren:{girl:0.076}, lennox:{boy:0.063}, walker:{boy:0.22},
 };
 // Spelling variants of the SAME bracket name → its functional popularity sums these in (with the name's own share).
 const VARIANTS = {
@@ -175,6 +186,10 @@ const MEANING = {
   callan:   "Irish · 'mighty in battle'",
   calvin:   "Latin · 'bald'",
   mcallister:"Scottish · 'son of Alexander'",
+  conall:   "Irish · 'strong as a wolf'",
+  seamus:   "Irish form of James · 'supplanter'",
+  lennox:   "Scottish · 'place of elms'",
+  "jean-ralphio":"Fictional · Parks & Rec's one-man hype machine",
   // girls
   sloane:   "Irish · 'raider, warrior'",
   rowan:    "Irish · 'little red one'; also the rowan tree",
@@ -187,6 +202,10 @@ const MEANING = {
   merritt:  "English · 'boundary gate' surname",
   maira:    "Irish form of Mary · 'beloved; wished-for child'",
   fiona:    "Scottish · 'fair, white'",
+  wren:     "English · the small, lively songbird",
+  maeve:    "Irish · 'she who intoxicates'; warrior queen Medb",
+  niamh:    "Irish · 'bright, radiant' (say 'Neev')",
+  walker:   "English · 'cloth-walker, fuller' surname",
   // unisex
   lennon:   "Irish · 'lover, sweetheart'",
   sullivan: "Irish · 'dark-eyed; hawk-eyed'",
