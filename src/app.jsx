@@ -6,7 +6,7 @@ const C = {
   bg:"#E6D9BC", paper:"#F4EBD3", ink:"#2C2114", muted:"#6E5C40", line:"#D2C49E",
   teal:"#2E4756", ochre:"#C9821A", sage:"#566B36", clay:"#A4663A",
   // Per-person identity colors — used everywhere a person's data is shown.
-  claire:"#C9821A", andrew:"#4C6B3A",
+  claire:"#C9821A", andrew:"#3F6CA3",
   // Per-gender identity + soft background tints for the Vote banner / Rankings.
   girl:"#B5677B", boy:"#5B7493", girlTint:"#EFE0E2", boyTint:"#DFE6EC",
   // Stronger pink/blue fills for the Vote cards so the round is obvious at a glance.
@@ -1530,7 +1530,7 @@ function ByNameTrends({ pg, names, profileName, gender }) {
   // Reset to the top 5 whenever the gender (name set) changes, so a toggle never carries old names over.
   useEffect(() => { setSel(ranked.slice(0, 5).map((n) => n.id)); setEmph(null); }, [gender]); // eslint-disable-line
   if (!pg.history || pg.history.length < 2) return trendEmpty("Vote on a few names to start the trend lines.");
-  const lines = sel.map((id) => {
+  const lines = sel.filter((id) => ranked.some((n) => n.id === id)).map((id) => {
     const st = styleOf(id);
     return { id, name: findName(names, id).name, color: st.color, dash: st.dash,
       points: [{ x: 0, y: START }, ...pg.history.map((h) => ({ x: h.m, y: h.r[id] ?? START }))] };
@@ -1607,13 +1607,9 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
   const S = 360, padL = 12, padR = 74, padT = 20, padB = 32;
   const px = (r) => padL + (1 - (r - 1) / (N - 1)) * (S - padL - padR); // rank 1 -> right
   const py = (r) => padT + ((r - 1) / (N - 1)) * (S - padT - padB);     // rank 1 -> top
-  // Color by lean: near the diagonal = agree (both love) or both-pass; off it = whoever ranks it higher.
-  const dotColor = (x, y) => {
-    const gap = Math.abs(x - y), avg = (x + y) / 2;
-    if (gap <= N / 6) return avg <= N / 2 ? agreeColor : passColor;
-    return y < x ? yColor : xColor;
-  };
-  const legend = [[yColor, `${yName} leans`], [xColor, `${xName} leans`], [agreeColor, "Both love"], [passColor, "Both pass"]];
+  // Color each dot on a gradient by lean: pure xColor when x ranks it higher, pure
+  // yColor when y does, blended in between.
+  const dotColor = (x, y) => hexLerp(xColor, yColor, Math.max(0, Math.min(1, 0.5 + (x - y) / (2 * (N - 1)))));
   return (
     <div style={{ borderRadius:12, padding:10, background:C.paper, border:`1px solid ${C.line}` }}>
       <svg viewBox={`0 0 ${S} ${S}`} style={{ width:"100%", height:"auto", display:"block", overflow:"visible" }}>
@@ -1633,8 +1629,10 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
           );
         })}
       </svg>
-      <div style={{ display:"flex", flexWrap:"wrap", gap:12, marginTop:8, fontSize:10.5, color:C.muted }}>
-        {legend.map(([c, l]) => <span key={l} style={{ display:"flex", alignItems:"center", gap:5 }}><span style={{ width:9, height:9, borderRadius:999, background:c }} />{l}</span>)}
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:11, fontWeight:700 }}>
+        <span style={{ color:xColor }}>{xName}</span>
+        <span style={{ flex:1, height:8, borderRadius:999, background:`linear-gradient(to right, ${xColor}, ${yColor})` }} />
+        <span style={{ color:yColor }}>{yName}</span>
       </div>
     </div>
   );
@@ -1690,7 +1688,9 @@ function combinePg(data, gender, names) {
 function Trends({ data, profile }) {
   const [mode, setMode] = useState("byName");
   const [g, setG] = useState("girl");
-  const names = namesFor(g, data.custom, data.removed);
+  // Drop names vetoed by either owner — vetoed names shouldn't appear anywhere in Trends.
+  const vetoed = new Set([...data[g].claire.vetoed, ...data[g].andrew.vetoed]);
+  const names = namesFor(g, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
   const modes = [["byName","Compare names"],["compare","Compare voters"],["agree","Agreement"],["fam","Fam vs us"]];
   return (
     <div>
