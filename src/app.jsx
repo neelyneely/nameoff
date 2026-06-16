@@ -1644,7 +1644,6 @@ function AgreementView({ data, gender, names }) {
   const xr = ranksOf(c.ratings, names), yr = ranksOf(a.ratings, names);
   return (
     <div>
-      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>Each name by <b style={{ color:C.claire }}>Claire</b>’s rank (further right = she loves it) and <b style={{ color:C.andrew }}>Andrew</b>’s rank (higher = he loves it). Top-right corner = you both love it; opposite corners are clashes.</p>
       <ScatterCompare names={names} xr={xr} yr={yr} xName="Claire" yName="Andrew" xColor={C.claire} yColor={C.andrew} />
     </div>
   );
