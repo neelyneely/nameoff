@@ -111,6 +111,7 @@ const POP = {
   seamus:     { boy: { 2025:null } },
   lennox:     { boy: { 2020:292, 2021:254, 2022:248, 2023:265, 2024:264, 2025:289 } },
   "jean-ralphio": { boy: { 2025:null } },
+  albert:     { boy: { 2020:523, 2021:563, 2022:613, 2023:587, 2024:607, 2025:614 } },
   // nickname-only entries, shown next to their formal name via COMBINE
   finn:       { boy: { 2020:179, 2021:184, 2022:177, 2023:187, 2024:198, 2025:206 } },
   jack:       { boy: { 2020:21,  2021:11,  2022:15,  2023:14,  2024:15,  2025:15  } },
@@ -136,6 +137,9 @@ const POP = {
   wren:     { girl: { 2020:360, 2021:252, 2022:184, 2023:195, 2024:213, 2025:231 } },
   maeve:    { girl: { 2020:174, 2021:124, 2022:103, 2023:73, 2024:75, 2025:76 } },
   niamh:    { girl: { 2025:null } },
+  savannah: { girl: { 2020:67, 2021:67, 2022:76, 2023:92, 2024:108, 2025:135 } },
+  margaret: { girl: { 2020:126, 2021:125, 2022:127, 2023:132, 2024:119, 2025:112 } },
+  leona:    { girl: { 2020:483, 2021:515, 2022:531, 2023:520, 2024:487, 2025:429 } },
   // unisex (both brackets)
   lennon:   { girl: { 2020:299, 2021:238, 2022:228, 2023:243, 2024:235, 2025:214 },
               boy:  { 2020:691, 2021:673, 2022:663, 2023:756, 2024:786, 2025:808 } },
@@ -171,6 +175,7 @@ const PCT = {
   finn:{boy:0.093}, jack:{boy:0.477}, cal:{boy:0.030}, mack:{boy:0.036}, mac:{boy:0.021}, allister:{boy:0.014},
   shawn:{boy:0.022}, callen:{boy:0.032}, winnie:{girl:0.037}, sunny:{girl:0.045},
   maeve:{girl:0.17}, wren:{girl:0.076}, lennox:{boy:0.063}, walker:{boy:0.22},
+  savannah:{girl:0.122}, margaret:{girl:0.139}, leona:{girl:0.041}, albert:{boy:0.025},
 };
 // Spelling variants of the SAME bracket name → its functional popularity sums these in (with the name's own share).
 const VARIANTS = {
@@ -191,6 +196,7 @@ const MEANING = {
   seamus:   "Irish form of James · 'supplanter'",
   lennox:   "Scottish · 'place of elms'",
   "jean-ralphio":"Fictional · Parks & Rec's one-man hype machine",
+  albert:   "German · 'noble and bright'",
   // girls
   sloane:   "Irish · 'raider, warrior'",
   rowan:    "Irish · 'little red one'; also the rowan tree",
@@ -206,6 +212,9 @@ const MEANING = {
   wren:     "English · the small, lively songbird",
   maeve:    "Irish · 'she who intoxicates'; warrior queen Medb",
   niamh:    "Irish · 'bright, radiant' (say 'Neev')",
+  savannah: "English · flat tropical grassland; from Taíno 'sabana'",
+  margaret: "Greek · 'pearl'",
+  leona:    "Latin · 'lioness'",
   walker:   "English · 'cloth-walker, fuller' surname",
   // unisex
   lennon:   "Irish · 'lover, sweetheart'",
@@ -326,6 +335,38 @@ const CANDS = [
   C0("u","brevin","Brevin",[],"en",["sur","lyr"],"n",2,{girl:null,boy:null},"American · modern surname-name"),
   C0("u","ocean","Ocean",[],"gr",["nat"],"n",2,{girl:null,boy:null},"Greek · the sea"),
 ];
+// Spoken-pronunciation hints for the less-obvious candidate names (shown in For you).
+const SAY = {
+  eira:"AY-rah", saoirse:"SEER-shə", elowen:"el-OH-wen", linnea:"lin-AY-ah", sigrid:"SIG-rid",
+  bodhi:"BOH-dee", cassian:"CASS-ee-an", cassius:"CASS-ee-əs", lochlan:"LOCK-lin", tiernan:"TEER-nin",
+  thea:"THEE-ah", esme:"EZ-may", romy:"ROH-mee", maisie:"MAY-zee", soren:"SOR-en", magnus:"MAG-nəs",
+  juniper:"JOO-nih-per", ronan:"ROH-nin", desmond:"DEZ-mənd", silas:"SY-ləs", cormac:"COR-mack",
+  brennan:"BREN-in", bowen:"BOH-en", arden:"AR-den", ellis:"EL-iss", tegan:"TEG-ən", maren:"MAH-ren",
+  della:"DEL-ah", iris:"EYE-riss", nora:"NOR-ah", linus:"LY-nəs", arlo:"AR-loh", emmett:"EM-it",
+  everett:"EV-rit", emerson:"EM-er-sən", ellison:"EL-ih-sən", indigo:"IN-dih-goh", marigold:"MARE-ih-gold",
+};
+// Approximate recent SSA rank trajectories for the popular candidates, so the For-you
+// popularity chart shows a real trend. NOTE: estimates for the suggestion pool only —
+// roster names keep their verified data (these never overwrite an existing entry).
+const CSERIES = {
+  iris:    { girl:{ 2020:135,2021:130,2022:127,2023:119,2024:118,2025:115 } },
+  juniper: { girl:{ 2020:267,2021:252,2022:250,2023:248,2024:244,2025:240 } },
+  nora:    { girl:{ 2020:30, 2021:32, 2022:34, 2023:35, 2024:33, 2025:32 } },
+  thea:    { girl:{ 2020:286,2021:262,2022:243,2023:222,2024:208,2025:200 } },
+  esme:    { girl:{ 2020:980,2021:880,2022:790,2023:720,2024:660,2025:610 } },
+  saoirse: { girl:{ 2020:980,2021:905,2022:835,2023:780,2024:740,2025:710 } },
+  silas:   { boy: { 2020:100,2021:99, 2022:96, 2023:97, 2024:101,2025:100 } },
+  everett: { boy: { 2020:96, 2021:91, 2022:86, 2023:83, 2024:81, 2025:80 } },
+  emmett:  { boy: { 2020:139,2021:135,2022:132,2023:133,2024:134,2025:135 } },
+  arlo:    { boy: { 2020:302,2021:255,2022:222,2023:204,2024:190,2025:180 } },
+  ronan:   { boy: { 2020:332,2021:322,2022:330,2023:338,2024:341,2025:340 } },
+  cassius: { boy: { 2020:430,2021:400,2022:380,2023:365,2024:355,2025:350 } },
+  soren:   { boy: { 2020:560,2021:540,2022:520,2023:510,2024:505,2025:500 } },
+  bodhi:   { boy: { 2020:400,2021:350,2022:320,2023:300,2024:288,2025:280 } },
+  quinn:   { girl:{ 2020:97, 2021:90, 2022:85, 2023:82, 2024:81, 2025:80 }, boy:{ 2020:380,2021:400,2022:410,2023:415,2024:418,2025:420 } },
+  emerson: { girl:{ 2020:182,2021:165,2022:158,2023:152,2024:151,2025:150 }, boy:{ 2020:360,2021:380,2022:392,2023:398,2024:400,2025:400 } },
+  sage:    { girl:{ 2020:280,2021:262,2022:252,2023:246,2024:242,2025:240 }, boy:{ 2020:640,2021:630,2022:625,2023:622,2024:621,2025:620 } },
+};
 // Derive the candidate roster + fold candidate features/meanings/popularity into
 // the shared maps so an added candidate behaves like any other name.
 const CAND = { boy:[], girl:[], unisex:[] };
@@ -336,8 +377,9 @@ CANDS.forEach((c) => {
   // exists (e.g. a name that's also in the roster keeps its real history).
   if (MEANING[c.id] == null) MEANING[c.id] = c.m;
   const pop = POP[c.id] || (POP[c.id] = {});
-  if (c.rank.girl !== undefined && !pop.girl) pop.girl = { 2025: c.rank.girl };
-  if (c.rank.boy  !== undefined && !pop.boy)  pop.boy  = { 2025: c.rank.boy };
+  const ser = CSERIES[c.id] || {};
+  if (c.rank.girl !== undefined && !pop.girl) pop.girl = ser.girl || { 2025: c.rank.girl };
+  if (c.rank.boy  !== undefined && !pop.boy)  pop.boy  = ser.boy  || { 2025: c.rank.boy };
 });
 // Stamp nickname-potential (nk) onto every tagged name so the model can use it.
 const NICKS_N = {};
@@ -2230,9 +2272,8 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
 
       {pair && (
         <div style={{ marginBottom:18, padding:"14px 14px 12px", borderRadius:14, background:gTint(g), border:`1px solid ${C.line}` }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, flexWrap:"wrap", gap:6 }}>
+          <div style={{ marginBottom:10 }}>
             <span style={{ fontSize:13, fontWeight:700, color:C.ink }}>Tune your taste</span>
-            <span style={{ fontSize:11, color:C.muted }}>{tuned ? `tuned on ${tuned} name${tuned === 1 ? "" : "s"}` : "teaches your suggestions"}</span>
           </div>
           <div style={{ display:"flex", gap:10, alignItems:"stretch" }}>
             {pair.map((c, i) => {
@@ -2241,6 +2282,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                 <button key={c.id} onClick={() => react(i === 0 ? "a" : "b")} className="lift"
                   style={{ flex:1, minWidth:0, textAlign:"left", padding:"11px 12px", borderRadius:12, background:C.paper, border:`1px solid ${C.line}` }}>
                   <div style={{ fontFamily:DISPLAY, fontSize:21, color:C.ink, lineHeight:1.1 }}>{c.name}</div>
+                  {SAY[c.id] && <div style={{ fontSize:11, color:C.clay, marginTop:2, fontStyle:"italic" }}>say “{SAY[c.id]}”</div>}
                   <div style={{ fontSize:11.5, color:C.muted, margin:"3px 0 0" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
                   <div style={{ fontSize:10.5, color:C.teal, marginTop:5, fontWeight:600 }}>{ORIGIN_LABEL[f.o] || ""}{f.lean === "u" ? " · unisex" : ""}</div>
                 </button>
@@ -2295,7 +2337,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
           {sugg.map((item) => {
             const c = item.c, f = item.f;
-            const tier = tierOf(latestRank(c.id, g));
             const styles = f.s.slice(0, 2).map((t) => STYLE_LABEL[t]).filter(Boolean);
             const nick = (c.nicks && c.nicks.length) ? c.nicks[0] : null;
             return (
@@ -2303,17 +2344,18 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
                     <span style={{ fontFamily:DISPLAY, fontSize:22, color:C.ink }}>{c.name}</span>
+                    {SAY[c.id] && <span style={{ fontSize:11, color:C.clay, fontStyle:"italic" }}>say “{SAY[c.id]}”</span>}
                     {f.lean === "u" && <span style={{ fontSize:10, fontWeight:700, color:C.teal, letterSpacing:0.4 }}>UNISEX</span>}
                     {nick && <span style={{ fontSize:12, color:C.muted }}>“{nick}”</span>}
                   </div>
-                  <div style={{ fontSize:12.5, color:C.muted, margin:"2px 0 7px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    <span style={{ fontSize:10.5, fontWeight:700, color:tier.color, border:`1px solid ${tier.color}`, borderRadius:999, padding:"1px 7px" }}>{tier.label}</span>
+                  <div style={{ fontSize:12.5, color:C.muted, margin:"2px 0 6px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:2 }}>
                     <span style={{ fontSize:10.5, color:C.muted, background:C.bg, borderRadius:999, padding:"1px 7px" }}>{ORIGIN_LABEL[f.o] || ""}</span>
                     {styles.map((s) => (
                       <span key={s} style={{ fontSize:10.5, color:C.muted, background:C.bg, borderRadius:999, padding:"1px 7px" }}>{s}</span>
                     ))}
                   </div>
+                  <PopLine id={c.id} gender={g} compact />
                 </div>
                 <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"stretch", gap:6 }}>
                   <button onClick={() => add(item)} className="lift"
