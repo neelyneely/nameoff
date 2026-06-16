@@ -1600,16 +1600,17 @@ How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> ove
 }
 // Scatter that plots each name by two rank maps, with named directional axes:
 // further right = more loved on the x axis, higher = more loved on the y axis.
-function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = C.ink, agreeColor = C.teal, passColor = C.clay }) {
+function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = C.ink, midColor = C.sage }) {
   const pts = names.map((n) => ({ n, x: xr[n.id], y: yr[n.id] })).filter((p) => p.x != null && p.y != null);
   if (pts.length < 2) return trendEmpty("Not enough names ranked yet.");
   const N = Math.max(names.length, 2);
   const S = 360, padL = 12, padR = 74, padT = 20, padB = 32;
   const px = (r) => padL + (1 - (r - 1) / (N - 1)) * (S - padL - padR); // rank 1 -> right
   const py = (r) => padT + ((r - 1) / (N - 1)) * (S - padT - padB);     // rank 1 -> top
-  // Color each dot on a gradient by lean: pure xColor when x ranks it higher, pure
-  // yColor when y does, blended in between.
-  const dotColor = (x, y) => hexLerp(xColor, yColor, Math.max(0, Math.min(1, 0.5 + (x - y) / (2 * (N - 1)))));
+  // Color each dot on a 3-stop gradient by lean: xColor when x ranks it higher,
+  // yColor when y does, and a green midpoint when they agree (avoids a muddy blend).
+  const ramp = (t) => (t <= 0.5 ? hexLerp(xColor, midColor, t / 0.5) : hexLerp(midColor, yColor, (t - 0.5) / 0.5));
+  const dotColor = (x, y) => ramp(Math.max(0, Math.min(1, 0.5 + (x - y) / (2 * (N - 1)))));
   return (
     <div style={{ borderRadius:12, padding:10, background:C.paper, border:`1px solid ${C.line}` }}>
       <svg viewBox={`0 0 ${S} ${S}`} style={{ width:"100%", height:"auto", display:"block", overflow:"visible" }}>
@@ -1631,7 +1632,7 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
       </svg>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:11, fontWeight:700 }}>
         <span style={{ color:xColor }}>{xName}</span>
-        <span style={{ flex:1, height:8, borderRadius:999, background:`linear-gradient(to right, ${xColor}, ${yColor})` }} />
+        <span style={{ flex:1, height:8, borderRadius:999, background:`linear-gradient(to right, ${xColor}, ${midColor}, ${yColor})` }} />
         <span style={{ color:yColor }}>{yName}</span>
       </div>
     </div>
