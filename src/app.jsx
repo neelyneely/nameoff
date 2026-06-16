@@ -1621,6 +1621,19 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, starred, onStar, add
   );
 }
 function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, onStar, onBack, canGoBack, profile, addnicks, onAddNick, onRemoveNick }) {
+  // Keyboard voting for fast sessions: ←/→ pick left/right, Space skips.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!pair || picked) return;
+      const ae = document.activeElement, tag = (ae && ae.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || (ae && ae.isContentEditable)) return;
+      if (e.key === "ArrowLeft") { e.preventDefault(); onVote(pair[0], pair[1]); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); onVote(pair[1], pair[0]); }
+      else if (e.key === " ") { if (tag === "button") return; e.preventDefault(); onSkip(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pair, picked, onVote, onSkip]);
   const banner = (
     <div style={{ display:"flex", justifyContent:"center", marginBottom:14 }}>
       <span className="disp" style={{ fontSize:14, fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase", color: gColor(gender),
@@ -1628,7 +1641,7 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, on
     </div>
   );
   if (!pair) return (
-    <div>
+    <div className="voteWrap">
       {banner}
       <p style={{ fontSize:14, borderRadius:12, padding:"32px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
         Not enough names left to compare. Un-veto a few in Rankings, or add more names.
@@ -1638,7 +1651,7 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, starred, on
   const [a, b] = pair;
   const na = findName(names, a), nb = findName(names, b);
   return (
-    <div>
+    <div className="voteWrap">
       {banner}
       <div className="cards">
         <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} starred={starred.includes(a)} onStar={() => onStar(a)} added={(addnicks || {})[a]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
