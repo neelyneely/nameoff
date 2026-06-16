@@ -479,8 +479,10 @@ function App() {
 
   const otherG = (g) => (g === "girl" ? "boy" : "girl");
   const poolFor = (d, g) => {
-    const pg2 = d[g][profile];
-    return namesFor(g, d.custom, d.removed).filter((n) => !pg2.vetoed.includes(n.id));
+    // A veto is a shared dealbreaker: if either Claire or Andrew vetoed a name in
+    // this gender, it's out of voting for everyone (plus the current voter's own).
+    const out = new Set([...d[g].claire.vetoed, ...d[g].andrew.vetoed, ...d[g][profile].vetoed]);
+    return namesFor(g, d.custom, d.removed).filter((n) => !out.has(n.id));
   };
   const votable = (d, g) => poolFor(d, g).length >= 2;
   // Decide the gender for the NEXT matchup given how many were just completed.
