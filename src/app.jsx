@@ -1340,7 +1340,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>
         {isCombined
           ? (combineBoth
-              ? `Average of both ratings. Claire: ${cVotes} votes · Andrew: ${aVotes} votes.`
+              ? `Claire: ${cVotes} votes · Andrew: ${aVotes} votes.`
               : `Only ${cVoted ? "Claire" : "Andrew"} has voted so far. Showing their ratings alone; the combined ranking appears once you’ve both voted.`)
           : isEveryone
             ? `Average of ${votedGuests.length} family member${votedGuests.length === 1 ? "" : "s"}’ ratings (Claire and Andrew not included).`
