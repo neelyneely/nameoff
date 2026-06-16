@@ -1555,7 +1555,7 @@ function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big }) 
             onBlur={submit} placeholder="nickname"
             style={{ fontSize:fs, padding: big ? "2px 8px" : "2px 7px", borderRadius:999, border:`1px solid ${C.sage}`, width: big ? 96 : 84, background:C.paper, color:C.ink }} />
         : <button onClick={(e) => { e.stopPropagation(); setEditing(true); }} className="lift" title="Add a nickname (anyone can)"
-            style={{ fontSize:fs, fontWeight:700, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage, background:"transparent" }}>+ nick</button>}
+            style={{ fontSize:fs, fontWeight:700, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage, background:"transparent" }}>add nickname</button>}
     </div>
   );
 }
@@ -1957,7 +1957,7 @@ function NameChip({ n, added, gender, profile, onVeto, onRemove, onAddNick, onRe
               onBlur={submit} placeholder="nickname"
               style={{ fontSize:11, padding:"2px 7px", borderRadius:999, border:`1px solid ${C.sage}`, width:84, background:C.paper, color:C.ink }} />
           : <button onClick={() => setEditing(true)} className="lift" title="Add a nickname (anyone can)"
-              style={{ fontSize:11, fontWeight:700, padding:"1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage }}>+ nick</button>}
+              style={{ fontSize:11, fontWeight:700, padding:"1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage }}>add nickname</button>}
       </div>
     </li>
   );
@@ -2025,7 +2025,7 @@ function ManageNames({ data, profile, onRemove, onRestore, onVeto, onUnveto, onA
       {open && (
         <div style={{ marginTop:12 }}>
           <p style={{ fontSize:12, marginBottom:12, color:C.muted, lineHeight:1.55 }}>
-            <b style={{ color:C.clay }}>Veto</b> (⊘) is your personal hard no — it benches the name from voting and shows who said it. <b>Remove</b> (✕) takes a name off the list for both of you; that also clears any veto, so a restored name comes back clean. <b style={{ color:C.sage }}>+ nick</b> adds a nickname to any name — anyone can, no matter who added it. Add names with the “+ Add name” button up top.
+            <b style={{ color:C.clay }}>Veto</b> (⊘) is your personal hard no — it benches the name from voting and shows who said it. <b>Remove</b> (✕) takes a name off the list for both of you; that also clears any veto, so a restored name comes back clean. <b style={{ color:C.sage }}>Add nickname</b> adds a nickname to any name — anyone can, no matter who added it. Add names with the “+ Add name” button up top.
           </p>
           <div className="twocol"><Col title="Girls" gender="girl" /><Col title="Boys" gender="boy" /></div>
           {removedList.length > 0 && (
@@ -2381,7 +2381,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                 <button key={c.id} onClick={() => react(i === 0 ? "a" : "b")} className="lift"
                   style={{ flex:1, minWidth:0, textAlign:"left", padding:"11px 12px", borderRadius:12, background:C.paper, border:`1px solid ${C.line}` }}>
                   <div style={{ fontFamily:DISPLAY, fontSize:21, color:C.ink, lineHeight:1.1 }}>{c.name}</div>
-                  {SAY[c.id] && <div style={{ fontSize:11, color:C.clay, marginTop:2, fontStyle:"italic" }}>say “{SAY[c.id]}”</div>}
+                  {SAY[c.id] && <div style={{ fontSize:11, color:C.clay, marginTop:2, fontStyle:"italic" }}>“{SAY[c.id]}”</div>}
                   <div style={{ fontSize:11.5, color:C.muted, margin:"3px 0 0" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
                   <div style={{ fontSize:10.5, color:C.teal, marginTop:5, fontWeight:600 }}>{ORIGIN_LABEL[f.o] || ""}{f.lean === "u" ? " · unisex" : ""}</div>
                 </button>
@@ -2443,7 +2443,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
                     <span style={{ fontFamily:DISPLAY, fontSize:22, color:C.ink }}>{c.name}</span>
-                    {SAY[c.id] && <span style={{ fontSize:11, color:C.clay, fontStyle:"italic" }}>say “{SAY[c.id]}”</span>}
+                    {SAY[c.id] && <span style={{ fontSize:11, color:C.clay, fontStyle:"italic" }}>“{SAY[c.id]}”</span>}
                     {f.lean === "u" && <span style={{ fontSize:10, fontWeight:700, color:C.teal, letterSpacing:0.4 }}>UNISEX</span>}
                     {nick && <span style={{ fontSize:12, color:C.muted }}>“{nick}”</span>}
                   </div>
