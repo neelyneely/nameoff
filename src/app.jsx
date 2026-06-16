@@ -1608,7 +1608,7 @@ function AddPanel({ custom, onAdd, onRemove }) {
 
 /* -------------------------------- tabs ----------------------------------- */
 function Tabs({ view, setView }) {
-  const items = [["vote","Vote","heart"],["foryou","For you","spark"],["rankings","Rankings","trophy"],["trends","Trends","trend"]];
+  const items = [["vote","Vote","heart"],["foryou","Name ideas","spark"],["rankings","Rankings","trophy"],["trends","Trends","trend"]];
   return (
     <div style={{ display:"flex", gap:4, marginBottom:20, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label, icon]) => (
