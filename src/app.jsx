@@ -4162,13 +4162,28 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const [mode, setMode] = useState("combined");
   // The couple's combined ranking, the family aggregate, and a head-to-head of the
   // couple vs one individual voter.
-  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Crowd Favorites" }, { key: "compare", name: "Us vs. Them" }];
-  // Anyone (owner or guest) who has cast a vote can be the individual to compare against.
-  const people = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
-  const [cmpKey, setCmpKey] = useState(() => { const g = people.find((p) => !isOwner(p.key)) || people[0]; return g ? g.key : null; });
-  const cmp = (cmpKey && people.some((p) => p.key === cmpKey)) ? cmpKey : (people[0] ? people[0].key : null);
+  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Crowd Favorites" }, { key: "compare", name: "Compare" }];
+  // Two-up head-to-head: pick any two rankings — the couple combined, or any
+  // individual who has voted — and see them side by side. Defaults to Claire vs Andrew.
+  const voters = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
+  const sides = [{ key: "combined", name: "Neely-Stevenson" }, ...voters.map((p) => ({ key: p.key, name: p.name }))];
+  const [leftKey, setLeftKey] = useState("claire");
+  const [rightKey, setRightKey] = useState("andrew");
+  const sideValid = (k) => sides.some((s) => s.key === k);
+  const lk = sideValid(leftKey) ? leftKey : (sides[0] ? sides[0].key : null);
+  const rk = sideValid(rightKey) ? rightKey : (sides.find((s) => s.key !== lk) || sides[0] || {}).key;
   const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage notes/vetoes on the couple's ranking only
   const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : C.clay);
+  const sideColor = (k) => (k === "combined" ? C.teal : isOwner(k) ? pColor(k) : C.clay);
+  const PickRow = ({ label, sel, onPick }) => (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
+      <span style={{ fontSize:12, fontWeight:700, color:C.muted, width:40 }}>{label}</span>
+      {sides.map((s) => (
+        <button key={s.key} onClick={() => onPick(s.key)} className="lift" style={{ padding:"4px 11px", borderRadius:999, fontSize:13, fontWeight:700, border:`1px solid ${sel === s.key ? "transparent" : C.line}`,
+          ...(sel === s.key ? { background: sideColor(s.key), color:"#fff" } : { background:C.paper, color:C.muted }) }}>{s.name}</button>
+      ))}
+    </div>
+  );
   return (
     <div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
@@ -4178,21 +4193,18 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
         ))}
       </div>
       {mode === "compare" ? (
-        !cmp ? (
+        voters.length === 0 ? (
           <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-            <p style={{ fontSize:14, margin:0 }}>No one has voted yet. Once someone casts a vote you can compare your ranking against theirs.</p>
+            <p style={{ fontSize:14, margin:0 }}>No one has voted yet. Once someone casts a vote you can compare two rankings side by side.</p>
           </div>
         ) : (<>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6, alignItems:"center" }}>
-            <span style={{ fontSize:12, color:C.muted, marginRight:2 }}>Neely-Stevenson vs:</span>
-            {people.map((p) => (
-              <button key={p.key} onClick={() => setCmpKey(p.key)} className="lift" style={{ padding:"4px 12px", borderRadius:999, fontSize:13, fontWeight:700, border:`1px solid ${cmp === p.key ? "transparent" : C.line}`,
-                ...(cmp === p.key ? { background:C.clay, color:"#fff" } : { background:C.paper, color:C.muted }) }}>{p.name}{p.key === profile ? " (you)" : ""}</button>
-            ))}
+          <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
+            <PickRow label="Left" sel={lk} onPick={setLeftKey} />
+            <PickRow label="Right" sel={rk} onPick={setRightKey} />
           </div>
-          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Each ranking top-to-bottom, side by side: <b style={{ color:C.teal }}>your</b> order and <b style={{ color:C.clay }}>{data.profiles[cmp]}</b>’s.</p>
-          <CompareGender gender="girl" title="Girls" data={data} personKey={cmp} />
-          <CompareGender gender="boy" title="Boys" data={data} personKey={cmp} />
+          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Each ranking top-to-bottom, side by side. Names the two rank very differently are outlined.</p>
+          <CompareGender gender="girl" title="Girls" data={data} leftKey={lk} rightKey={rk} />
+          <CompareGender gender="boy" title="Boys" data={data} leftKey={lk} rightKey={rk} />
         </>)
       ) : (
         <div className="twocol">
@@ -4207,32 +4219,34 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
 // Head-to-head: one gender block with TWO ordered columns side by side — the
 // couple's combined ranking and the selected individual's ranking, each 1->N.
 // Names ranked very differently between the two outline in clay so clashes pop.
-function CompareGender({ gender, title, data, personKey }) {
+function CompareGender({ gender, title, data, leftKey, rightKey }) {
   const names = namesFor(gender, data.custom, data.removed);
   const c = data[gender].claire, a = data[gender].andrew;
-  const person = data[gender][personKey];
   const cVoted = c.votes > 0, aVoted = a.votes > 0;
-  const coupleR = {};
-  names.forEach((n) => {
-    const cr = c.ratings[n.id] ?? START, ar = a.ratings[n.id] ?? START;
-    coupleR[n.id] = (cVoted && aVoted) ? (cr + ar) / 2 : (cVoted ? cr : ar);
-  });
-  const benched = new Set([...(c.vetoed || []), ...(a.vetoed || []), ...((person && person.vetoed) || [])]);
+  // A "side" can be the couple combined, or any individual voter.
+  const sideOf = (key) => {
+    if (key === "combined") {
+      const r = {};
+      names.forEach((n) => { const cr = c.ratings[n.id] ?? START, ar = a.ratings[n.id] ?? START; r[n.id] = (cVoted && aVoted) ? (cr + ar) / 2 : (cVoted ? cr : ar); });
+      return { label: "Neely-Stevenson", ratings: r, vetoed: [...(c.vetoed || []), ...(a.vetoed || [])], voted: cVoted || aVoted, color: C.teal };
+    }
+    const pg = data[gender][key];
+    return { label: data.profiles[key] || key, ratings: pg ? pg.ratings : {}, vetoed: pg ? (pg.vetoed || []) : [], voted: !!(pg && pg.votes > 0), color: isOwner(key) ? pColor(key) : C.clay };
+  };
+  const L = sideOf(leftKey), R = sideOf(rightKey);
+  const benched = new Set([...(c.vetoed || []), ...(a.vetoed || []), ...L.vetoed, ...R.vetoed]);
   const live = names.filter((n) => !benched.has(n.id));
-  const pr = person ? person.ratings : {};
-  const ours = [...live].sort((x, y) => (coupleR[y.id] - coupleR[x.id]) || x.name.localeCompare(y.name));
-  const theirs = [...live].sort((x, y) => ((pr[y.id] ?? START) - (pr[x.id] ?? START)) || x.name.localeCompare(y.name));
-  const ourPos = {}; ours.forEach((n, i) => { ourPos[n.id] = i; });
-  const theirPos = {}; theirs.forEach((n, i) => { theirPos[n.id] = i; });
+  const order = (rt) => [...live].sort((x, y) => ((rt[y.id] ?? START) - (rt[x.id] ?? START)) || x.name.localeCompare(y.name));
+  const lList = order(L.ratings), rList = order(R.ratings);
+  const lPos = {}; lList.forEach((n, i) => { lPos[n.id] = i; });
+  const rPos = {}; rList.forEach((n, i) => { rPos[n.id] = i; });
   const big = Math.max(3, Math.ceil(live.length / 3));
-  const pname = data.profiles[personKey] || personKey;
-  const noData = !(cVoted || aVoted) || !person || !person.votes;
-  const Column = ({ label, color, list }) => (
+  const Column = ({ side, list }) => (
     <div style={{ flex:1, minWidth:0 }}>
-      <div style={{ fontSize:11, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em", color, marginBottom:6, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</div>
+      <div style={{ fontSize:11, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em", color: side.color, marginBottom:6, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{side.label}</div>
       <ol style={{ display:"flex", flexDirection:"column", gap:5 }}>
         {list.map((n, i) => {
-          const moved = Math.abs(ourPos[n.id] - theirPos[n.id]) >= big;
+          const moved = Math.abs(lPos[n.id] - rPos[n.id]) >= big;
           return (
             <li key={n.id} style={{ display:"flex", alignItems:"baseline", gap:7, borderRadius:9, padding:"6px 9px", background:C.paper, border:`1px solid ${moved ? C.clay : C.line}` }}>
               <span className="disp" style={{ fontSize:13, fontWeight:700, color:C.muted, minWidth:16 }}>{i + 1}</span>
@@ -4243,19 +4257,20 @@ function CompareGender({ gender, title, data, personKey }) {
       </ol>
     </div>
   );
+  const notReady = !L.voted ? L.label : !R.voted ? R.label : null;
   return (
     <div style={{ marginBottom:20 }}>
       <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
         <h3 className="disp" style={{ margin:0, fontSize:20, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
       </div>
-      {noData ? (
+      {notReady ? (
         <div style={{ borderRadius:12, padding:"36px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-          <p style={{ fontSize:14, margin:0 }}>{!(cVoted || aVoted) ? "You haven’t voted on these yet." : `${pname} hasn’t voted on the ${gender === "boy" ? "boys" : "girls"} yet.`}</p>
+          <p style={{ fontSize:14, margin:0 }}>{notReady} hasn’t voted on the {gender === "boy" ? "boys" : "girls"} yet.</p>
         </div>
       ) : (
         <div style={{ display:"flex", gap:10 }}>
-          <Column label="Neely-Stevenson" color={C.teal} list={ours} />
-          <Column label={pname} color={C.clay} list={theirs} />
+          <Column side={L} list={lList} />
+          <Column side={R} list={rList} />
         </div>
       )}
     </div>
