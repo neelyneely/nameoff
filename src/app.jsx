@@ -2008,11 +2008,15 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
 }
 function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemoveNick, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
-  // Two rankings: the couple's combined (with agreement/disparity), and the family
-  // pool (everyone who isn't Claire or Andrew). No individual tabs.
-  const options = [{ key: "combined", name: "Neely Stevenson" }, { key: "everyone", name: "Fam and Friends" }];
+  // The couple's combined ranking, the family aggregate, and a head-to-head of the
+  // couple vs one individual voter.
+  const options = [{ key: "combined", name: "Neely Stevenson" }, { key: "everyone", name: "Fam and Friends" }, { key: "compare", name: "Us vs…" }];
+  // Anyone (owner or guest) who has cast a vote can be the individual to compare against.
+  const people = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
+  const [cmpKey, setCmpKey] = useState(() => { const g = people.find((p) => !isOwner(p.key)) || people[0]; return g ? g.key : null; });
+  const cmp = (cmpKey && people.some((p) => p.key === cmpKey)) ? cmpKey : (people[0] ? people[0].key : null);
   const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage notes/vetoes on the couple's ranking only
-  const tabColor = (k) => (k === "combined" ? C.teal : C.sage);
+  const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : C.clay);
   return (
     <div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
@@ -2021,11 +2025,82 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
             ...(mode === o.key ? { background: tabColor(o.key), color:"#fff" } : { color:C.muted }) }}>{o.key === profile ? `${o.name} (you)` : o.name}</button>
         ))}
       </div>
-      <div className="twocol">
-        <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
-        <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
-      </div>
+      {mode === "compare" ? (
+        !cmp ? (
+          <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+            <p style={{ fontSize:14, margin:0 }}>No one has voted yet. Once someone casts a vote you can compare your ranking against theirs.</p>
+          </div>
+        ) : (<>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6, alignItems:"center" }}>
+            <span style={{ fontSize:12, color:C.muted, marginRight:2 }}>Your combined ranking vs:</span>
+            {people.map((p) => (
+              <button key={p.key} onClick={() => setCmpKey(p.key)} className="lift" style={{ padding:"4px 12px", borderRadius:999, fontSize:13, fontWeight:700, border:`1px solid ${cmp === p.key ? "transparent" : C.line}`,
+                ...(cmp === p.key ? { background:C.clay, color:"#fff" } : { background:C.paper, color:C.muted }) }}>{p.name}{p.key === profile ? " (you)" : ""}</button>
+            ))}
+          </div>
+          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Ordered by your ranking. <span style={{ color:C.sage, fontWeight:700 }}>▲</span> {data.profiles[cmp]} ranks it higher than you · <span style={{ color:C.clay, fontWeight:700 }}>▼</span> lower.</p>
+          <div className="twocol">
+            <CompareColumn gender="girl" title="Girls" data={data} personKey={cmp} />
+            <CompareColumn gender="boy" title="Boys" data={data} personKey={cmp} />
+          </div>
+        </>)
+      ) : (
+        <div className="twocol">
+          <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+          <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+        </div>
+      )}
       {isOwner(profile) && <ManageNames data={data} profile={profile} onVeto={onVeto} onUnveto={onUnveto} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />}
+    </div>
+  );
+}
+// Head-to-head: the couple's combined ranking order, each name annotated with one
+// individual's rank and whether they rank it higher/lower than the couple.
+function CompareColumn({ gender, title, data, personKey }) {
+  const names = namesFor(gender, data.custom, data.removed);
+  const c = data[gender].claire, a = data[gender].andrew;
+  const person = data[gender][personKey];
+  const cVoted = c.votes > 0, aVoted = a.votes > 0;
+  const coupleR = {};
+  names.forEach((n) => {
+    const cr = c.ratings[n.id] ?? START, ar = a.ratings[n.id] ?? START;
+    coupleR[n.id] = (cVoted && aVoted) ? (cr + ar) / 2 : (cVoted ? cr : ar);
+  });
+  const benched = new Set([...(c.vetoed || []), ...(a.vetoed || []), ...((person && person.vetoed) || [])]);
+  const live = names.filter((n) => !benched.has(n.id));
+  const coupleRank = ranksOf(coupleR, live);
+  const personRank = ranksOf(person ? person.ratings : {}, live);
+  const rows = live.map((n) => ({ n, cr: coupleRank[n.id], pr: personRank[n.id] })).sort((x, y) => x.cr - y.cr);
+  const big = Math.max(2, Math.ceil(live.length / 3));
+  const pname = data.profiles[personKey] || personKey;
+  const noData = !(cVoted || aVoted) || !person || !person.votes;
+  return (
+    <div style={{ flex:1, minWidth:0 }}>
+      <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
+        <h3 className="disp" style={{ margin:0, fontSize:20, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
+      </div>
+      {noData ? (
+        <div style={{ borderRadius:12, padding:"36px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+          <p style={{ fontSize:14, margin:0 }}>{!(cVoted || aVoted) ? "You haven’t voted on these yet." : `${pname} hasn’t voted on the ${gender === "boy" ? "boys" : "girls"} yet.`}</p>
+        </div>
+      ) : (
+        <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {rows.map((r) => {
+            const diff = r.pr - r.cr; // negative = they rank it higher (better) than you
+            const up = diff <= -1, down = diff >= 1;
+            const col = up ? C.sage : down ? C.clay : C.muted;
+            const mag = Math.abs(diff);
+            return (
+              <li key={r.n.id} style={{ borderRadius:12, padding:"9px 12px", display:"flex", alignItems:"center", gap:10, background:C.paper, border:`1px solid ${mag >= big ? col : C.line}` }}>
+                <span className="disp" style={{ width:24, textAlign:"center", fontSize:18, fontWeight:700, color:C.ink }}>{r.cr}</span>
+                <span className="disp" style={{ flex:1, minWidth:0, fontSize:17, fontWeight:700, color:C.ink }}>{r.n.name}</span>
+                <span style={{ fontSize:12, fontWeight:700, color:C.muted, whiteSpace:"nowrap" }}>{pname} #{r.pr}</span>
+                <span style={{ fontSize:13, fontWeight:800, color:col, minWidth:24, textAlign:"right", whiteSpace:"nowrap" }}>{up ? "▲" : down ? "▼" : "·"}{mag >= big ? mag : ""}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }
