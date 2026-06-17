@@ -4521,19 +4521,21 @@ function approxRank(pct, gender) {
   if (pts.length < 2) return null;
   const clamp = (r) => { r = Math.round(r); return r < 1 ? 1 : (r > 1000 ? null : r); };
   // Below the calibration range: extrapolate up the first segment's slope (rarer → higher rank).
+  const slope = (dy, dx) => (dx === 0 ? 0 : dy / dx); // guard equal-% points (would divide by zero)
   if (pct <= pts[0].p) {
-    const s = (pts[1].r - pts[0].r) / (pts[1].p - pts[0].p);
+    const s = slope(pts[1].r - pts[0].r, pts[1].p - pts[0].p);
     return clamp(pts[0].r + (pct - pts[0].p) * s);
   }
   // Above the range (e.g. a popular merged name): extrapolate down the last segment's slope.
   if (pct >= pts[pts.length - 1].p) {
     const a = pts[pts.length - 2], b = pts[pts.length - 1];
-    const s = (b.r - a.r) / (b.p - a.p);
+    const s = slope(b.r - a.r, b.p - a.p);
     return clamp(b.r + (pct - b.p) * s);
   }
   for (let i = 0; i < pts.length - 1; i++) {
     if (pct >= pts[i].p && pct <= pts[i + 1].p) {
-      const t = (pct - pts[i].p) / (pts[i + 1].p - pts[i].p);
+      const dp = pts[i + 1].p - pts[i].p;
+      const t = dp === 0 ? 0 : (pct - pts[i].p) / dp;
       return clamp(pts[i].r + t * (pts[i + 1].r - pts[i].r));
     }
   }
@@ -5230,8 +5232,10 @@ function App() {
     if (rA == null && rB == null) nr = START;
     else if (rA == null) nr = rB + 30;          // dropped at the top
     else if (rB == null) nr = rA - 30;          // dropped at the bottom
+    else if (Math.abs(rA - rB) < 2) nr = rB + 1; // neighbours tied (e.g. the unvoted cluster at START): sit just above the lower one so the drop isn't a no-op
     else nr = (rA + rB) / 2;                     // between two names
     cur.ratings[id] = nr;
+    if (!cur.matches[id]) cur.matches[id] = 1;   // a manual drop is an opinion, so it counts as "voted" and shows in the combined ranking too
     dataRef.current = next; setData(next);
     save({ [kCore(g, profile)]: coreOf(cur) });
   };
@@ -5970,7 +5974,7 @@ function nameAttrib(n) {
 }
 // Join a few names conversationally: "A", "A & B", "A, B & 2 more".
 const fmtNames = (arr) => (arr.length <= 1 ? (arr[0] || "") : arr.length === 2 ? `${arr[0]} & ${arr[1]}` : `${arr.slice(0, 2).join(", ")} & ${arr.length - 2} more`);
-function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, added, onAddNick, onRemoveNick, haters, reserveHaters }) {
+function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, added, onAddNick, onRemoveNick, haters, reserveHaters, iHardPassed, onUnpass }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
@@ -6004,8 +6008,9 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
           {/* Reserve this line for every card in a column that has any haters, so the
               presence/absence of the dislike note never changes a card's height. */}
           {(reserveHaters || (haters && haters.length > 0)) && (
-            <div style={{ fontSize:11, marginTop:5, minHeight:16, color:C.clay, fontWeight:600 }}>
-              {haters && haters.length > 0 ? `💀 ${fmtNames(haters)} can’t stand this one` : ""}
+            <div style={{ fontSize:11, marginTop:5, minHeight:16, color:C.clay, fontWeight:600, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              <span>{haters && haters.length > 0 ? `💀 ${fmtNames(haters)} can’t stand this one` : ""}</span>
+              {iHardPassed && <button onClick={onUnpass} className="lift" style={{ fontSize:10, fontWeight:700, padding:"1px 7px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage, background:"transparent" }}>take mine back</button>}
             </div>
           )}
         </div>
@@ -6320,7 +6325,8 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
             profile={profile} readOnly={readOnly} onVeto={(id) => onVeto(gender, profile, id)} onClaim={onClaim} notes={notes} onSetNote={onSetNote}
-            added={addedNicksFor(addnicks, gender, r.n.id)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} reserveHaters={anyHaters} />
+            added={addedNicksFor(addnicks, gender, r.n.id)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} reserveHaters={anyHaters}
+            iHardPassed={!isOwner(profile) && (data[gender][profile].vetoed || []).includes(r.n.id)} onUnpass={() => onUnveto(gender, profile, r.n.id)} />
         ))}
       </ol>
       {unvoted.length > 0 && (
@@ -6526,10 +6532,12 @@ function TrendChart({ lines, xUnit = "votes", emph = null, endLabels = false }) 
           const v = valAt(l, hx); return v == null ? null : <circle key={l.id} cx={X(hx)} cy={Y(v)} r="3" fill={l.color} />;
         })}
         {endLabels && (() => {
-          const labs = lines.map((l) => ({ id: l.id, name: l.name, color: l.color, y: Y(valAt(l, maxX) ?? START) })).sort((a, b) => a.y - b.y);
+          // Label each line at its OWN last point, not the right edge — so a short line
+          // (e.g. a voter with few votes) isn't labelled as if it ran flat across the axis.
+          const labs = lines.map((l) => { const last = l.points[l.points.length - 1]; return { id: l.id, name: l.name, color: l.color, x: X(last.x), y: Y(last.y) }; }).sort((a, b) => a.y - b.y);
           for (let i = 1; i < labs.length; i++) if (labs[i].y < labs[i - 1].y + 11) labs[i].y = labs[i - 1].y + 11;
           return labs.map((lb) => (
-            <text key={lb.id} x={W - padR + 5} y={lb.y + 3} fontSize="9.5" fontWeight={emph === lb.id ? 800 : 600}
+            <text key={lb.id} x={Math.min(lb.x + 4, W - padR + 5)} y={lb.y + 3} fontSize="9.5" fontWeight={emph === lb.id ? 800 : 600}
               fill={lb.color} opacity={emph && emph !== lb.id ? 0.3 : 1}>{lb.name}</text>
           ));
         })()}
