@@ -1037,6 +1037,7 @@ function App() {
   const dataRef = useRef(null);
   const savingRef = useRef(false);
   const genRef = useRef(0); // bumps on every local change; lets a background pull skip stale results
+  const votingRef = useRef(false); // synchronous re-entry guard so a fast double-input can't double-vote
   const pendingPairRef = useRef(null); // forces the pair effect to use a specific matchup (for go-back)
 
   const load = useCallback(async () => {
@@ -1121,7 +1122,9 @@ function App() {
   const unlocked = myVotes >= UNLOCK_VOTES; // Rankings + Trends gated until you've voted
 
   const vote = (winId, loseId) => {
-    if (picked) return;
+    if (picked || votingRef.current) return;
+    votingRef.current = true;
+    savingRef.current = true; genRef.current++; // arm synchronously so a background sync can't drop this vote
     setPicked(winId);
     const g = voteGender;
     const next = clone(dataRef.current);
@@ -1147,6 +1150,7 @@ function App() {
       if (ng !== g) { setVoteGender(ng); setBlockCount(c); }            // pair effect re-picks for new gender
       else { setBlockCount(completed); setPair(pickPair(poolFor(next, ng), next[ng][profile], pair)); }
       setPicked(null);
+      votingRef.current = false;
       // Little milestone celebrations: the 10-vote unlock, then every 25.
       const total = (next.boy[profile].votes || 0) + (next.girl[profile].votes || 0);
       if (total === UNLOCK_VOTES) celebrateNow({ title: "Rankings unlocked!", emoji: "🔓", note: `${total} votes in — Rankings & Trends are open.` });
@@ -1244,7 +1248,10 @@ function App() {
     const next = clone(dataRef.current);
     const an = { ...(next.addnicks || {}) };
     const cur = an[id] ? [...an[id]] : [];
-    if (cur.some((x) => x.toLowerCase() === nick.toLowerCase())) return;
+    // Reject a nick already present (added OR a built-in nick) so it can't make a dead remove-✕ chip.
+    const tgt = [...namesFor("girl", next.custom, next.removed), ...namesFor("boy", next.custom, next.removed)].find((n) => n.id === id);
+    const existing = new Set([...cur, ...((tgt && tgt.nicks) || [])].map((x) => x.toLowerCase()));
+    if (existing.has(nick.toLowerCase())) return;
     an[id] = [...cur, nick];
     next.addnicks = an; ADDED_NICKS = an;
     dataRef.current = next; setData(next);
@@ -1280,12 +1287,18 @@ function App() {
   // style model). reason is optional free text the voter can add later.
   const dismissSuggestion = (g, id, reason) => {
     const next = clone(dataRef.current);
-    const cur = next[g][profile];
-    cur.dismissed = { ...(cur.dismissed || {}) };
-    const prev = cur.dismissed[id] || {};
-    cur.dismissed[id] = { r: reason != null ? reason : (prev.r || ""), t: prev.t || Date.now() };
+    // Unisex candidates show on both gender tabs, so dismiss them on both.
+    const gens = (FEAT[id] && FEAT[id].lean === "u") ? ["boy", "girl"] : [g];
+    const updates = {};
+    gens.forEach((gg) => {
+      const cur = next[gg][profile];
+      cur.dismissed = { ...(cur.dismissed || {}) };
+      const prev = cur.dismissed[id] || {};
+      cur.dismissed[id] = { r: reason != null ? reason : (prev.r || ""), t: prev.t || Date.now() };
+      updates[kCore(gg, profile)] = coreOf(cur);
+    });
     dataRef.current = next; setData(next);
-    save({ [kCore(g, profile)]: coreOf(cur) });
+    save(updates);
   };
   const restoreSuggestion = (g, id) => {
     const next = clone(dataRef.current);
@@ -1380,7 +1393,7 @@ function App() {
 
       {view === "vote" && (
         <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:12, color:C.muted }}>
-          <span>{pg.votes} matchup{pg.votes === 1 ? "" : "s"} as <b style={{ color:pColor(profile) }}>{PROFILES[profile]}</b> · {voteGender === "boy" ? "boys" : "girls"}</span>
+          <span>Voting as <b style={{ color:pColor(profile) }}>{PROFILES[profile]}</b> · {voteGender === "boy" ? "boys" : "girls"}</span>
           {confirmReset ? (
             <span style={{ display:"flex", alignItems:"center", gap:8 }}>
               Reset {PROFILES[profile]}’s {voteGender === "boy" ? "boys" : "girls"}?
@@ -1767,7 +1780,7 @@ function PopLine({ id, gender, compact = false, noChart = false, meaningShown = 
 // the Manage-names panel. Anyone can add a nickname to any name; only nicknames a
 // user added (in `added`) can be removed. Stops click/key bubbling so it can live
 // inside a clickable vote card without triggering a vote.
-function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big }) {
+function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big, canRemove }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState("");
   const addedSet = new Set((added || []).map((x) => x.toLowerCase()));
@@ -1778,7 +1791,7 @@ function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big }) 
       {(nicks || []).map((nk) => (
         <span key={nk} style={{ display:"flex", alignItems:"center", gap:3, fontSize:fs, fontWeight:600, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>
           {nk}
-          {addedSet.has(nk.toLowerCase()) && (
+          {canRemove && addedSet.has(nk.toLowerCase()) && (
             <button onClick={(e) => { e.stopPropagation(); onRemoveNick(id, nk); }} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
               style={{ display:"flex", color:C.clay, padding:0, background:"none" }}><Ic n="x" s={big ? 11 : 9} c={C.clay} /></button>
           )}
@@ -1794,7 +1807,7 @@ function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big }) 
     </div>
   );
 }
-function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, onRemoveNick }) {
+function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, onRemoveNick, canRemoveNick }) {
   const chosen = picked === n.id;
   const accent = gColor(gender);     // pink for girls, blue for boys (follows the matchup)
   const popMode = React.useContext(PopModeCtx);
@@ -1848,7 +1861,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, on
       </div>
       <div style={{ minHeight:28, marginTop:8, display:"flex", justifyContent:"center", alignItems:"center" }}>
         {onAddNick
-          ? <NickEditor id={n.id} nicks={n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} center big />
+          ? <NickEditor id={n.id} nicks={n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={canRemoveNick} center big />
           : <span style={{ fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</span>}
       </div>
       <div style={{ minHeight:36, marginTop:6, fontSize:12.5, color:C.muted, fontStyle:"italic", lineHeight:1.4 }}>{MEANING[n.id] ? cleanMeaning(MEANING[n.id]) : ""}</div>
@@ -1911,11 +1924,11 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, can
     <div className="voteWrap">
       {banner}
       <div className="cards">
-        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} added={(addnicks || {})[a]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} added={(addnicks || {})[a]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} />
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span className="disp" style={{ fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} added={(addnicks || {})[b]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} added={(addnicks || {})[b]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} />
       </div>
       <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
         <button onClick={onBack} disabled={!canGoBack} className="lift" title="Revisit your last vote and change it"
@@ -1985,7 +1998,7 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
           </div>
           <div style={{ minHeight:16, marginTop:2 }}>
             {/* Nicknames are editable by anyone in any view (not tied to the star/note readOnly gate). */}
-            <NickEditor id={r.n.id} nicks={r.n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+            <NickEditor id={r.n.id} nicks={r.n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} />
           </div>
           <div style={{ height:6, borderRadius:999, marginTop:6, background:C.line }}>
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
@@ -2010,7 +2023,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const [mode, setMode] = useState("combined");
   // The couple's combined ranking, the family aggregate, and a head-to-head of the
   // couple vs one individual voter.
-  const options = [{ key: "combined", name: "Neely Stevenson" }, { key: "everyone", name: "Fam and Friends" }, { key: "compare", name: "Us vs…" }];
+  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Fam and Friends" }, { key: "compare", name: "Us vs…" }];
   // Anyone (owner or guest) who has cast a vote can be the individual to compare against.
   const people = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
   const [cmpKey, setCmpKey] = useState(() => { const g = people.find((p) => !isOwner(p.key)) || people[0]; return g ? g.key : null; });
@@ -2185,11 +2198,11 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>
         {isCombined
           ? (combineBoth
-              ? `Claire: ${cVotes} votes · Andrew: ${aVotes} votes.`
+              ? `Your combined ranking.`
               : `Only ${cVoted ? "Claire" : "Andrew"} has voted so far. Showing their ratings alone; the combined ranking appears once you’ve both voted.`)
           : isEveryone
             ? `Average of ${votedGuests.length} family member${votedGuests.length === 1 ? "" : "s"}’ ratings (Claire and Andrew not included).`
-            : `${data.profiles[mode]}’s ratings · ${sel.votes} votes cast.`}
+            : `${data.profiles[mode]}’s ratings.`}
       </p>
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
