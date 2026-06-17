@@ -2569,9 +2569,10 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
     </div>
   );
 }
-// Head-to-head: the couple's combined ranking order, each name annotated with one
-// individual's rank and whether they rank it higher/lower than the couple.
-function CompareColumn({ gender, title, data, personKey }) {
+// Head-to-head: one gender block with TWO ordered columns side by side — the
+// couple's combined ranking and the selected individual's ranking, each 1->N.
+// Names ranked very differently between the two outline in clay so clashes pop.
+function CompareGender({ gender, title, data, personKey }) {
   const names = namesFor(gender, data.custom, data.removed);
   const c = data[gender].claire, a = data[gender].andrew;
   const person = data[gender][personKey];
@@ -2583,14 +2584,32 @@ function CompareColumn({ gender, title, data, personKey }) {
   });
   const benched = new Set([...(c.vetoed || []), ...(a.vetoed || []), ...((person && person.vetoed) || [])]);
   const live = names.filter((n) => !benched.has(n.id));
-  const coupleRank = ranksOf(coupleR, live);
-  const personRank = ranksOf(person ? person.ratings : {}, live);
-  const rows = live.map((n) => ({ n, cr: coupleRank[n.id], pr: personRank[n.id] })).sort((x, y) => x.cr - y.cr);
-  const big = Math.max(2, Math.ceil(live.length / 3));
+  const pr = person ? person.ratings : {};
+  const ours = [...live].sort((x, y) => (coupleR[y.id] - coupleR[x.id]) || x.name.localeCompare(y.name));
+  const theirs = [...live].sort((x, y) => ((pr[y.id] ?? START) - (pr[x.id] ?? START)) || x.name.localeCompare(y.name));
+  const ourPos = {}; ours.forEach((n, i) => { ourPos[n.id] = i; });
+  const theirPos = {}; theirs.forEach((n, i) => { theirPos[n.id] = i; });
+  const big = Math.max(3, Math.ceil(live.length / 3));
   const pname = data.profiles[personKey] || personKey;
   const noData = !(cVoted || aVoted) || !person || !person.votes;
-  return (
+  const Column = ({ label, color, list }) => (
     <div style={{ flex:1, minWidth:0 }}>
+      <div style={{ fontSize:11, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em", color, marginBottom:6, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</div>
+      <ol style={{ display:"flex", flexDirection:"column", gap:5 }}>
+        {list.map((n, i) => {
+          const moved = Math.abs(ourPos[n.id] - theirPos[n.id]) >= big;
+          return (
+            <li key={n.id} style={{ display:"flex", alignItems:"baseline", gap:7, borderRadius:9, padding:"6px 9px", background:C.paper, border:`1px solid ${moved ? C.clay : C.line}` }}>
+              <span className="disp" style={{ fontSize:13, fontWeight:700, color:C.muted, minWidth:16 }}>{i + 1}</span>
+              <span className="disp" style={{ fontSize:15, fontWeight:700, color:C.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{n.name}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+  return (
+    <div style={{ marginBottom:20 }}>
       <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
         <h3 className="disp" style={{ margin:0, fontSize:20, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
       </div>
@@ -2599,22 +2618,10 @@ function CompareColumn({ gender, title, data, personKey }) {
           <p style={{ fontSize:14, margin:0 }}>{!(cVoted || aVoted) ? "You haven’t voted on these yet." : `${pname} hasn’t voted on the ${gender === "boy" ? "boys" : "girls"} yet.`}</p>
         </div>
       ) : (
-        <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
-          {rows.map((r) => {
-            const diff = r.pr - r.cr; // negative = they rank it higher (better) than you
-            const up = diff <= -1, down = diff >= 1;
-            const col = up ? C.sage : down ? C.clay : C.muted;
-            const mag = Math.abs(diff);
-            return (
-              <li key={r.n.id} style={{ borderRadius:12, padding:"9px 12px", display:"flex", alignItems:"center", gap:10, background:C.paper, border:`1px solid ${mag >= big ? col : C.line}` }}>
-                <span className="disp" style={{ width:24, textAlign:"center", fontSize:18, fontWeight:700, color:C.ink }}>{r.cr}</span>
-                <span className="disp" style={{ flex:1, minWidth:0, fontSize:17, fontWeight:700, color:C.ink }}>{r.n.name}</span>
-                <span style={{ fontSize:12, fontWeight:700, color:C.muted, whiteSpace:"nowrap" }}>{pname} #{r.pr}</span>
-                <span style={{ fontSize:13, fontWeight:800, color:col, minWidth:24, textAlign:"right", whiteSpace:"nowrap" }}>{up ? "▲" : down ? "▼" : "·"}{mag >= big ? mag : ""}</span>
-              </li>
-            );
-          })}
-        </ol>
+        <div style={{ display:"flex", gap:10 }}>
+          <Column label="Neely-Stevenson" color={C.teal} list={ours} />
+          <Column label={pname} color={C.clay} list={theirs} />
+        </div>
       )}
     </div>
   );
@@ -3183,6 +3190,12 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
     setLastDismissed({ id: item.c.id, name: item.c.name }); setReasonText(""); setLastAdded(null);
     setRound((r) => r + 1);
   };
+  // Hard pass on one name in the Tune pair: hide it for good and bring up a fresh pair.
+  const passOne = (c) => {
+    onDismiss(g, c.id);
+    setLastDismissed({ id: c.id, name: c.name }); setReasonText(""); setLastAdded(null);
+    setRound((r) => r + 1);
+  };
   const saveReason = () => {
     if (lastDismissed) onDismiss(g, lastDismissed.id, reasonText.trim());
     setLastDismissed(null); setReasonText("");
@@ -3212,6 +3225,11 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                   <div style={{ fontSize:11.5, color:C.muted, margin:"3px 0 0" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
                   <div style={{ fontSize:10.5, color:C.teal, marginTop:5, fontWeight:600 }}>{ORIGIN_LABEL[f.o] || ""}{f.lean === "u" ? " · unisex" : ""}</div>
                   <PopLine id={c.id} gender={g} compact noChart />
+                  <button onClick={(e) => { e.stopPropagation(); passOne(c); }}
+                    aria-label={`Hard pass on ${c.name} — never show it again`}
+                    style={{ marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:4, width:"100%", fontSize:10.5, fontWeight:600, padding:"5px 6px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.clay }}>
+                    <Ic n="ban" s={11} c={C.clay} /> Hard pass
+                  </button>
                 </div>
               );
             })}
@@ -3221,7 +3239,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
               <Ic n="heart" s={13} c="#fff" fill="#fff" /> Love both
             </button>
             <button onClick={() => react("pass")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:12.5, fontWeight:700, padding:"7px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, color:C.clay }}>
-              <Ic n="ban" s={13} c={C.clay} /> Pass both
+              <Ic n="ban" s={13} c={C.clay} /> Hate both
             </button>
             <button onClick={() => react("skip")} className="lift" style={{ fontSize:12.5, fontWeight:600, padding:"7px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
               Skip
