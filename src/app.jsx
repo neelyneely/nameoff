@@ -2680,6 +2680,50 @@ const trimHistory = (h) => {
   return a;
 };
 
+// Each history entry is a snapshot of (rounded) ratings after a vote. A single vote
+// nudges exactly two names by an equal amount: the winner up, the loser down. So we
+// can recover the matchup behind every vote by diffing consecutive snapshots (the
+// first one is diffed against the START baseline when history is complete). If the
+// log was trimmed (oldest snapshots dropped), the first kept row is a fixed baseline
+// with no recoverable matchup. Returns one event per history row, oldest-first.
+function reconstructPG(pg) {
+  const H = (pg && pg.history) || [];
+  const trimmed = !(H.length && H[0].m === 1);
+  const events = [];
+  for (let i = 0; i < H.length; i++) {
+    const cur = H[i].r || {};
+    let win = null, lose = null;
+    const prev = i === 0 ? (H[0].m === 1 ? "START" : null) : (H[i - 1].r || {});
+    if (prev) {
+      let wd = 0.5, ld = -0.5;
+      for (const id in cur) {
+        const base = prev === "START" ? START : (id in prev ? prev[id] : null);
+        if (base == null) continue;
+        const d = cur[id] - base;
+        if (d > wd) { wd = d; win = id; }
+        if (d < ld) { ld = d; lose = id; }
+      }
+    }
+    events.push({ m: H[i].m, t: H[i].t, win, lose, baseline: i === 0 && trimmed });
+  }
+  return { events, trimmed };
+}
+
+// Friendly "2 min ago" + an absolute stamp, relative to a passed-in now (ms).
+function fmtWhen(t, now) {
+  if (!t) return { rel: "unknown time", abs: "" };
+  const s = Math.max(0, (now - t) / 1000);
+  let rel;
+  if (s < 60) rel = "just now";
+  else if (s < 3600) rel = `${Math.floor(s / 60)} min ago`;
+  else if (s < 86400) rel = `${Math.floor(s / 3600)} hr ago`;
+  else if (s < 604800) { const n = Math.floor(s / 86400); rel = `${n} day${n > 1 ? "s" : ""} ago`; }
+  else { const n = Math.floor(s / 604800); rel = `${n} wk${n > 1 ? "s" : ""} ago`; }
+  let abs = "";
+  try { abs = new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch {}
+  return { rel, abs };
+}
+
 function emptyPG(gender, custom) {
   const ratings = {}, matches = {};
   namesFor(gender, custom).forEach((n) => { ratings[n.id] = START; matches[n.id] = 0; });
@@ -2833,6 +2877,7 @@ function App() {
   const showToast = (msg, onUndo) => setToast({ msg, onUndo });
   const [undo, setUndo] = useState([]); // in-session stack of reversible matchups (per profile)
   const [showAdd, setShowAdd] = useState(false);
+  const [showLog, setShowLog] = useState(false); // Vote log modal (review & delete past votes)
   const [showSync, setShowSync] = useState(false);
   const [popMode, setPopMode] = useState(() => localStorage.getItem("nameoff_popmode") || "rank");
   const changePopMode = (m) => { setPopMode(m); try { localStorage.setItem("nameoff_popmode", m); } catch {} };
@@ -2984,6 +3029,46 @@ function App() {
     pendingPairRef.current = entry.pair;
     if (entry.g !== voteGender) { setVoteGender(entry.g); }
     else { pendingPairRef.current = null; setPair(entry.pair); setPicked(null); }
+  };
+
+  // Remove one specific past vote (any person, any gender) from the Vote log: drop
+  // that matchup and replay the rest so ratings, matches, votes & history stay exact.
+  const deleteVote = (p, g, m) => {
+    const next = clone(dataRef.current);
+    const pg = next[g] && next[g][p];
+    if (!pg || !pg.history) return;
+    const rec = reconstructPG(pg);
+    const target = rec.events.find((e) => e.m === m);
+    if (!target || target.baseline) return;
+    const names = namesFor(g, next.custom);
+    const base = {}; names.forEach((n) => { base[n.id] = START; });
+    let r, cnt, arr = [], replay;
+    if (rec.trimmed) {
+      const b = pg.history[0];
+      r = { ...base, ...(b.r || {}) }; cnt = b.m; arr = [{ m: b.m, t: b.t, r: b.r }];
+      replay = rec.events.filter((e) => !e.baseline && e.m !== m);
+    } else {
+      r = { ...base }; cnt = 0;
+      replay = rec.events.filter((e) => e.m !== m);
+    }
+    for (const e of replay) {
+      if (e.win && e.lose) r = updateElo(r, e.win, e.lose);
+      cnt += 1;
+      const snap = {}; names.forEach((n) => { snap[n.id] = Math.round(r[n.id] ?? START); });
+      arr.push({ m: cnt, t: e.t, r: snap });
+    }
+    let matches;
+    if (!rec.trimmed) {
+      matches = {}; names.forEach((n) => { matches[n.id] = 0; });
+      for (const e of replay) { if (e.win) matches[e.win] = (matches[e.win] || 0) + 1; if (e.lose) matches[e.lose] = (matches[e.lose] || 0) + 1; }
+    } else {
+      matches = { ...pg.matches };
+      if (target.win) matches[target.win] = Math.max(0, (matches[target.win] || 0) - 1);
+      if (target.lose) matches[target.lose] = Math.max(0, (matches[target.lose] || 0) - 1);
+    }
+    pg.ratings = r; pg.matches = matches; pg.votes = cnt; pg.history = arr;
+    dataRef.current = next; setData(next);
+    save({ [kCore(g, p)]: coreOf(pg), [kHist(g, p)]: pg.history });
   };
 
   const vetoCurrent = (id) => {
@@ -3206,9 +3291,10 @@ function App() {
     <PopModeCtx.Provider value={popMode}>
     <Celebrate data={celebrate} onClose={() => setCelebrate(null)} />
     <Toast data={toast} onClose={() => setToast(null)} />
+    {showLog && <VoteLog data={data} onDelete={deleteVote} onClose={() => setShowLog(false)} />}
     <div className="wrap">
       <Header me={data.profiles[profile]} myColor={pColor(profile)} onSwitch={switchMe}
-        showAdd={showAdd} setShowAdd={setShowAdd}
+        showAdd={showAdd} setShowAdd={setShowAdd} onOpenLog={() => setShowLog(true)}
         popMode={popMode} setPopMode={changePopMode} />
       {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom} />}
       <Tabs view={view} setView={setView} />
@@ -3242,6 +3328,77 @@ function App() {
       )}
     </div>
     </PopModeCtx.Provider>
+  );
+}
+
+/* ----------------------------- vote log ---------------------------------- */
+// Every vote each person has cast, newest first, with the recovered matchup and a
+// timestamp — so a vote cast by mistake (e.g. while peeking at someone else's tab)
+// can be spotted and removed. Deleting recomputes that person's ratings cleanly.
+function VoteLog({ data, onDelete, onClose }) {
+  const now = Date.now();
+  const roster = data.roster || [];
+  const nameOf = (g, id) => findName(namesFor(g, data.custom), id).name;
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"24px 12px", overflowY:"auto", zIndex:60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width:"100%", maxWidth:560, background:C.bg, border:`1px solid ${C.line}`, borderRadius:18, padding:"20px 18px", margin:"auto" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+          <span className="disp" style={{ fontSize:20, fontWeight:800 }}>Vote log</span>
+          <button onClick={onClose} className="lift" aria-label="Close" style={{ display:"flex", padding:4, color:C.muted }}><Ic n="x" s={18} /></button>
+        </div>
+        <p style={{ fontSize:12.5, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
+          Every vote each person has cast, newest first. Spot one that was really you by mistake and tap <Ic n="x" s={11} c={C.clay} /> to remove just that vote — the rankings recompute automatically.
+        </p>
+        {roster.map((p) => {
+          const rows = [
+            ...reconstructPG(data.girl[p.key] || {}).events.map((e) => ({ ...e, g:"girl" })),
+            ...reconstructPG(data.boy[p.key] || {}).events.map((e) => ({ ...e, g:"boy" })),
+          ].filter((e) => e.t).sort((x, y) => y.t - x.t);
+          return (
+            <div key={p.key} style={{ marginBottom:18 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                <span style={{ width:10, height:10, borderRadius:999, background:pColor(p.key) }} />
+                <span style={{ fontSize:15, fontWeight:700, color:C.ink }}>{data.profiles[p.key] || p.name}</span>
+                <span style={{ fontSize:12, color:C.muted }}>{rows.length} vote{rows.length === 1 ? "" : "s"}</span>
+              </div>
+              {rows.length === 0 ? (
+                <div style={{ fontSize:12.5, color:C.muted, fontStyle:"italic", padding:"2px 2px 4px" }}>No votes yet.</div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  {rows.map((e) => {
+                    const when = fmtWhen(e.t, now);
+                    const known = e.win && e.lose;
+                    return (
+                      <div key={e.g + e.m} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 11px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
+                        <span style={{ fontSize:9.5, fontWeight:800, letterSpacing:"0.04em", textTransform:"uppercase", color:gColor(e.g), background:gTint(e.g), borderRadius:999, padding:"2px 7px", flexShrink:0 }}>{e.g === "boy" ? "Boy" : "Girl"}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13.5, color:C.ink }}>
+                            {known
+                              ? <><b className="disp">{nameOf(e.g, e.win)}</b> <span style={{ color:C.muted }}>over</span> {nameOf(e.g, e.lose)}</>
+                              : <span style={{ color:C.muted, fontStyle:"italic" }}>matchup unavailable</span>}
+                          </div>
+                          <div style={{ fontSize:11, color:C.muted }}>{when.rel}{when.abs ? ` · ${when.abs}` : ""}</div>
+                        </div>
+                        {e.baseline ? (
+                          <span style={{ fontSize:10, color:C.line, flexShrink:0 }} title="Oldest kept vote — can’t be removed on its own">—</span>
+                        ) : (
+                          <button
+                            onClick={() => { if (window.confirm(`Remove ${data.profiles[p.key] || p.name}’s vote${known ? ` (${nameOf(e.g, e.win)} over ${nameOf(e.g, e.lose)})` : ""}? Their rankings will recompute. This can’t be undone.`)) onDelete(p.key, e.g, e.m); }}
+                            className="lift" aria-label="Remove this vote" title="Remove this vote"
+                            style={{ flexShrink:0, display:"flex", padding:6, borderRadius:8, color:C.clay, border:`1px solid ${C.line}`, background:C.bg }}>
+                            <Ic n="x" s={13} c={C.clay} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -3325,7 +3482,7 @@ function syncDot(sync) {
   if (sync.status === "saving" || sync.status === "syncing") return C.ochre;
   return C.sage;
 }
-function Header({ me, myColor, onSwitch, showAdd, setShowAdd, popMode, setPopMode }) {
+function Header({ me, myColor, onSwitch, showAdd, setShowAdd, popMode, setPopMode, onOpenLog }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
@@ -3343,6 +3500,12 @@ function Header({ me, myColor, onSwitch, showAdd, setShowAdd, popMode, setPopMod
         <div style={{ marginRight:"auto" }}>
           <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
         </div>
+        {onOpenLog && (
+          <button onClick={onOpenLog} className="lift" title="Vote log — review & undo past votes"
+            style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 14px", borderRadius:999, fontSize:13.5, fontWeight:700, background:C.paper, color:C.muted, border:`1px solid ${C.line}` }}>
+            <Ic n="list" s={15} /> Vote log
+          </button>
+        )}
         <button onClick={() => setShowAdd((s) => !s)} className="lift"
           style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:999, fontSize:15, fontWeight:700,
             ...(showAdd ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.sage, border:`1px solid ${C.line}` }) }}>
