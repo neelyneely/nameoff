@@ -4656,9 +4656,13 @@ const uniqueId = (base, taken) => { let id = base, k = 2; while (taken.has(id)) 
 // base nicks, so anyone can nickname any name regardless of who added it. Held at
 // module scope (like POP/MEANING) and refreshed from data in assemble().
 let ADDED_NICKS = {};
-const mergeNicks = (n) => {
-  const add = ADDED_NICKS[n.id];
-  if (!add || !add.length) return n;
+// Added nicknames are keyed per gender ("girl:campbell") so a unisex name can carry
+// different nicks for each gender. A plain-id key is legacy (gender-agnostic) and is
+// merged into both genders for back-compat.
+const addedNicksFor = (addnicks, gender, id) => [...((addnicks || {})[gender + ":" + id] || []), ...((addnicks || {})[id] || [])];
+const mergeNicks = (n, gender) => {
+  const add = addedNicksFor(ADDED_NICKS, gender, n.id);
+  if (!add.length) return n;
   const seen = new Set((n.nicks || []).map((x) => x.toLowerCase()));
   const nicks = [...(n.nicks || [])];
   add.forEach((nk) => { const k = nk.toLowerCase(); if (!seen.has(k)) { seen.add(k); nicks.push(nk); } });
@@ -4670,7 +4674,7 @@ function namesFor(gender, custom, removed) {
     .filter((c) => (c.gender === gender || c.gender === "both") && !baseNames.has(c.name.toLowerCase()))
     .map((c) => ({ id: c.id, name: c.name, nicks: c.nicks || [], unisex: c.gender === "both", custom: true, by: c.by, byName: c.byName }));
   const rm = new Set(removed || []);
-  return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id)).map(mergeNicks);
+  return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id)).map((n) => mergeNicks(n, gender));
 }
 const findName = (names, id) => names.find((n) => n.id === id) || { id, name: id, nicks: [] };
 const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred, explore: pg.explore || {}, dismissed: pg.dismissed || {} });
@@ -5137,27 +5141,29 @@ function App() {
     if (pair && pair.includes(id)) setPair(pickPair(poolFor(next, voteGender), next[voteGender][profile], null));
   };
   // Anyone can nickname any name (built-in or added), regardless of who added it.
-  const addNick = (id, raw) => {
+  const addNick = (gender, id, raw) => {
     const nick = (raw || "").trim();
     if (!nick) return;
+    const key = gender + ":" + id;
     const next = clone(dataRef.current);
     const an = { ...(next.addnicks || {}) };
-    const cur = an[id] ? [...an[id]] : [];
-    // Reject a nick already present (added OR a built-in nick) so it can't make a dead remove-✕ chip.
-    const tgt = [...namesFor("girl", next.custom, next.removed), ...namesFor("boy", next.custom, next.removed)].find((n) => n.id === id);
+    const cur = an[key] ? [...an[key]] : [];
+    // Reject a nick already shown for this name+gender (added OR built-in) so it can't make a dead remove-✕ chip.
+    const tgt = namesFor(gender, next.custom, next.removed).find((n) => n.id === id);
     const existing = new Set([...cur, ...((tgt && tgt.nicks) || [])].map((x) => x.toLowerCase()));
     if (existing.has(nick.toLowerCase())) return;
-    an[id] = [...cur, nick];
+    an[key] = [...cur, nick];
     next.addnicks = an; ADDED_NICKS = an;
     dataRef.current = next; setData(next);
     save({ addnicks: an });
   };
-  const removeNick = (id, nick) => {
+  const removeNick = (gender, id, nick) => {
     const next = clone(dataRef.current);
     const an = { ...(next.addnicks || {}) };
-    if (!an[id]) return;
-    an[id] = an[id].filter((x) => x.toLowerCase() !== nick.toLowerCase());
-    if (!an[id].length) delete an[id];
+    // remove from the gender-specific bucket and the legacy gender-agnostic one
+    [gender + ":" + id, id].forEach((k) => {
+      if (an[k]) { an[k] = an[k].filter((x) => x.toLowerCase() !== nick.toLowerCase()); if (!an[k].length) delete an[k]; }
+    });
     next.addnicks = an; ADDED_NICKS = an;
     dataRef.current = next; setData(next);
     save({ addnicks: an });
@@ -5776,11 +5782,11 @@ function PopLine({ id, gender, compact = false, noChart = false, meaningShown = 
 // the Manage-names panel. Anyone can add a nickname to any name; only nicknames a
 // user added (in `added`) can be removed. Stops click/key bubbling so it can live
 // inside a clickable vote card without triggering a vote.
-function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big, canRemove }) {
+function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big, canRemove, gender }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState("");
   const addedSet = new Set((added || []).map((x) => x.toLowerCase()));
-  const submit = () => { const v = val.trim(); if (v) onAddNick(id, v); setVal(""); setEditing(false); };
+  const submit = () => { const v = val.trim(); if (v) onAddNick(gender, id, v); setVal(""); setEditing(false); };
   const fs = big ? 13 : 11;
   return (
     <div onClick={(e) => e.stopPropagation()} style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap", justifyContent: center ? "center" : "flex-start" }}>
@@ -5788,7 +5794,7 @@ function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big, ca
         <span key={nk} style={{ display:"flex", alignItems:"center", gap:3, fontSize:fs, fontWeight:600, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>
           {nk}
           {canRemove && addedSet.has(nk.toLowerCase()) && (
-            <button onClick={(e) => { e.stopPropagation(); onRemoveNick(id, nk); }} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
+            <button onClick={(e) => { e.stopPropagation(); onRemoveNick(gender, id, nk); }} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
               style={{ display:"flex", color:C.clay, padding:0, background:"none" }}><Ic n="x" s={big ? 11 : 9} c={C.clay} /></button>
           )}
         </span>
@@ -5858,7 +5864,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, on
       <div style={{ minHeight:14, fontSize:11.5, color:C.clay, fontStyle:"italic" }}>{sayOf(n.id) ? `“${sayOf(n.id)}”` : ""}</div>
       <div style={{ minHeight:28, marginTop:8, display:"flex", justifyContent:"center", alignItems:"center" }}>
         {onAddNick
-          ? <NickEditor id={n.id} nicks={n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={canRemoveNick} center big />
+          ? <NickEditor id={n.id} nicks={n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={canRemoveNick} gender={gender} center big />
           : <span style={{ fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</span>}
       </div>
       <div style={{ minHeight:36, marginTop:6, fontSize:12.5, color:C.muted, fontStyle:"italic", lineHeight:1.4 }}>{MEANING[n.id] ? cleanMeaning(MEANING[n.id]) : ""}</div>
@@ -5921,11 +5927,11 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, can
     <div className="voteWrap">
       {banner}
       <div className="cards">
-        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} added={(addnicks || {})[a]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} />
+        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} added={addedNicksFor(addnicks, gender, a)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} />
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span className="disp" style={{ fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} added={(addnicks || {})[b]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} />
+        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} added={addedNicksFor(addnicks, gender, b)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} />
       </div>
       <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
         <button onClick={onBack} disabled={!canGoBack} className="lift" title="Revisit your last vote and change it"
@@ -5997,7 +6003,7 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
           </div>
           <div style={{ minHeight:16, marginTop:2 }}>
             {/* Nicknames are editable by anyone in any view (not tied to the star/note readOnly gate). */}
-            <NickEditor id={r.n.id} nicks={r.n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} />
+            <NickEditor id={r.n.id} nicks={r.n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={gender} />
           </div>
           <div style={{ height:6, borderRadius:999, marginTop:6, background:C.line }}>
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
@@ -6321,7 +6327,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
             profile={profile} readOnly={readOnly} onVeto={(id) => onVeto(gender, profile, id)} onClaim={onClaim} notes={notes} onSetNote={onSetNote}
-            added={addnicks[r.n.id]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} reserveHaters={anyHaters} />
+            added={addedNicksFor(addnicks, gender, r.n.id)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} reserveHaters={anyHaters} />
         ))}
       </ol>
       {unvoted.length > 0 && (
@@ -6380,7 +6386,7 @@ function NameChip({ n, added, gender, profile, onVeto, onAddNick, onRemoveNick }
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState("");
   const addedSet = new Set((added || []).map((x) => x.toLowerCase()));
-  const submit = () => { const v = val.trim(); if (v) onAddNick(n.id, v); setVal(""); setEditing(false); };
+  const submit = () => { const v = val.trim(); if (v) onAddNick(gender, n.id, v); setVal(""); setEditing(false); };
   return (
     <li style={{ display:"flex", flexDirection:"column", gap:5, borderRadius:12, padding:"6px 8px 7px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -6395,7 +6401,7 @@ function NameChip({ n, added, gender, profile, onVeto, onAddNick, onRemoveNick }
           <span key={nk} style={{ display:"flex", alignItems:"center", gap:3, fontSize:11, padding:"1px 8px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.muted }}>
             {nk}
             {addedSet.has(nk.toLowerCase()) && (
-              <button onClick={() => onRemoveNick(n.id, nk)} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
+              <button onClick={() => onRemoveNick(gender, n.id, nk)} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
                 style={{ display:"flex", color:C.clay, padding:0 }}><Ic n="x" s={9} /></button>
             )}
           </span>
@@ -6430,7 +6436,7 @@ function ManageNames({ data, profile, onVeto, onUnveto, onAddNick, onRemoveNick 
         </div>
         <ul style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
           {active.map((n) => (
-            <NameChip key={n.id} n={n} added={(data.addnicks || {})[n.id]} gender={gender} profile={profile}
+            <NameChip key={n.id} n={n} added={addedNicksFor(data.addnicks, gender, n.id)} gender={gender} profile={profile}
               onVeto={onVeto} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
           ))}
         </ul>
@@ -6923,7 +6929,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                   </div>
                   <PopLine id={c.id} gender={g} compact meaningShown />
                   <div style={{ marginTop:6 }}>
-                    <NickEditor id={c.id} nicks={mergeNicks({ id: c.id, nicks: c.nicks || [] }).nicks} added={(data.addnicks || {})[c.id]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} />
+                    <NickEditor id={c.id} nicks={mergeNicks({ id: c.id, nicks: c.nicks || [] }, g).nicks} added={addedNicksFor(data.addnicks, g, c.id)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={g} />
                   </div>
                 </div>
                 <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"stretch", gap:6 }}>
