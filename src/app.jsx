@@ -1596,11 +1596,16 @@ function App() {
   };
   const restoreSuggestion = (g, id) => {
     const next = clone(dataRef.current);
-    const cur = next[g][profile];
-    cur.dismissed = { ...(cur.dismissed || {}) };
-    delete cur.dismissed[id];
+    const gens = (FEAT[id] && FEAT[id].lean === "u") ? ["boy", "girl"] : [g];
+    const updates = {};
+    gens.forEach((gg) => {
+      const cur = next[gg][profile];
+      cur.dismissed = { ...(cur.dismissed || {}) };
+      delete cur.dismissed[id];
+      updates[kCore(gg, profile)] = coreOf(cur);
+    });
     dataRef.current = next; setData(next);
-    save({ [kCore(g, profile)]: coreOf(cur) });
+    save(updates);
   };
   const setNote = (id, text) => {
     const next = clone(dataRef.current);
@@ -2427,13 +2432,16 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const myVeto = isOwner(profile) ? (data[gender][profile].vetoed || []) : [];
   const guestKeys = data.roster.filter((p) => !isOwner(p.key)).map((p) => p.key);
   const votedGuests = guestKeys.filter((k) => data[gender][k].votes > 0);
-  const everyoneScore = (id) => votedGuests.length ? votedGuests.reduce((s, k) => s + (data[gender][k].ratings[id] ?? START), 0) / votedGuests.length : START;
+  // Average only family members who actually rated this name (don't pad non-raters
+  // with the START default, which would drag every score toward 1500).
+  const everyoneScore = (id) => { const rs = votedGuests.filter((k) => data[gender][k].ratings[id] != null); return rs.length ? rs.reduce((s, k) => s + data[gender][k].ratings[id], 0) / rs.length : START; };
   // An owner's veto is a shared dealbreaker, so it benches the name in the couple's
   // AND the Fam-and-friends ranking; a person view uses that person's own vetoes.
   const isVetoed = (id) => isPerson ? sel.vetoed.includes(id) : (cVeto.includes(id) || aVeto.includes(id));
   const cMatch = data[gender].claire.matches || {}, aMatch = data[gender].andrew.matches || {};
   // "Not yet voted on" (combined view only): neither owner has seen it in a matchup yet.
-  const notVotedYet = (id) => isCombined && (cMatch[id] || 0) === 0 && (aMatch[id] || 0) === 0;
+  const notVotedYet = (id) => isCombined ? ((cMatch[id] || 0) === 0 && (aMatch[id] || 0) === 0)
+    : isEveryone ? votedGuests.every((k) => ((data[gender][k].matches || {})[id] || 0) === 0) : false;
 
   const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
   const cVoted = cVotes > 0, aVoted = aVotes > 0;
@@ -2446,7 +2454,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
     if (combineBoth) {
       rows = names.map((n) => {
         const avg = ((cR[n.id] ?? START) + (aR[n.id] ?? START)) / 2;
-        const split = Math.abs(cRank[n.id] - aRank[n.id]) >= splitGap;
+        const split = Math.abs((cR[n.id] ?? START) - (aR[n.id] ?? START)) >= 150; // big Elo gap = real disagreement
         return { n, score: avg, c: cRank[n.id], a: aRank[n.id], split };
       });
     } else {
