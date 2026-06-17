@@ -3081,6 +3081,17 @@ function pickPair(names, pg, last) {
   }
   return Math.random() < 0.5 ? [A.id, B.id] : [B.id, A.id];
 }
+// Pick one fresh opponent for a name we're keeping (used when one card is hard-passed):
+// favor fewer prior matchups, then a rating near the kept name's.
+function pickPartner(names, pg, keepId) {
+  const pool = names.filter((n) => n.id !== keepId);
+  if (!pool.length) return null;
+  const m = (id) => pg.matches[id] || 0;
+  const rK = pg.ratings[keepId] ?? START;
+  pool.sort((x, y) => (m(x.id) - m(y.id)) || (Math.abs((pg.ratings[x.id] ?? START) - rK) - Math.abs((pg.ratings[y.id] ?? START) - rK)));
+  const top = pool.slice(0, Math.min(4, pool.length));
+  return top[Math.floor(Math.random() * top.length)].id;
+}
 const ranksOf = (ratings, names) =>
   [...names].sort((a, b) => (ratings[b.id] ?? START) - (ratings[a.id] ?? START))
     .reduce((o, n, i) => { o[n.id] = i + 1; return o; }, {});
@@ -3323,7 +3334,14 @@ function App() {
     if (!next[g][profile].vetoed.includes(id)) next[g][profile].vetoed.push(id); // veto is per-gender
     dataRef.current = next; setData(next); setPicked(null);
     save({ [kCore(g, profile)]: coreOf(next[g][profile]) });
-    if (votable(next, g)) { setPair(pickPair(poolFor(next, g), next[g][profile], null)); }
+    const pool = poolFor(next, g);
+    const survivor = pair && pair.find((x) => x !== id);  // keep the other card; swap only the hard-passed one
+    if (survivor && pool.some((nn) => nn.id === survivor)) {
+      const opp = pickPartner(pool, next[g][profile], survivor);
+      if (opp) { const sIdx = pair.indexOf(survivor); const np = [...pair]; np[1 - sIdx] = opp; setPair(np); }
+      else setPair(pickPair(pool, next[g][profile], null));
+    }
+    else if (votable(next, g)) { setPair(pickPair(pool, next[g][profile], null)); }
     else if (votable(next, otherG(g))) { setVoteGender(otherG(g)); setBlockCount(0); }
     else { setPair(null); }
     showToast(`${isOwner(profile) ? "Vetoed" : "Hard-passed"} ${nm}`, () => unveto(g, profile, id));
@@ -4949,11 +4967,29 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
     setLastDismissed({ id: item.c.id, name: item.c.name }); setReasonText(""); setLastAdded(null);
     setRound((r) => r + 1);
   };
-  // Hard pass on one name in the Tune pair: hide it for good and bring up a fresh pair.
+  // Replace just one card of the Tune pair (keep the other one in place).
+  const replaceOne = (c) => setPair((cur) => {
+    if (!cur) return cur;
+    const idx = cur.findIndex((x) => x.id === c.id);
+    if (idx === -1) return cur;
+    const keep = cur[1 - idx];
+    const pool = suggestNames(data, profile, g).map((x) => x.c).filter((x) => x.id !== keep.id && x.id !== c.id);
+    if (!pool.length) return cur;
+    const np = [...cur]; np[idx] = pool[Math.floor(Math.random() * Math.min(5, pool.length))]; return np;
+  });
+  // Hard pass on one name in the Tune pair: hide it for good, keep the other card.
   const passOne = (c) => {
     onDismiss(g, c.id);
     setLastDismissed({ id: c.id, name: c.name }); setReasonText(""); setLastAdded(null);
-    setRound((r) => r + 1);
+    replaceOne(c);
+  };
+  // Add one name from the Tune pair to voting, keep the other card.
+  const addOne = (c) => {
+    const f = FEAT[c.id];
+    const gender = f && f.lean === "u" ? "both" : g;
+    onAdd(c.name, (c.nicks || []).join(", "), gender);
+    setLastAdded({ name: c.name, gender }); setLastDismissed(null);
+    replaceOne(c);
   };
   const saveReason = () => {
     if (lastDismissed) onDismiss(g, lastDismissed.id, reasonText.trim());
@@ -4984,11 +5020,16 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                   <div style={{ fontSize:11.5, color:C.muted, margin:"3px 0 0" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
                   <div style={{ fontSize:10.5, color:C.teal, marginTop:5, fontWeight:600 }}>{ORIGIN_LABEL[f.o] || ""}{f.lean === "u" ? " · unisex" : ""}</div>
                   <PopLine id={c.id} gender={g} compact noChart />
-                  <button onClick={(e) => { e.stopPropagation(); passOne(c); }}
-                    aria-label={`Hard pass on ${c.name} — never show it again`}
-                    style={{ marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:4, width:"100%", fontSize:10.5, fontWeight:600, padding:"5px 6px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.clay }}>
-                    <Ic n="ban" s={11} c={C.clay} /> Hard pass
-                  </button>
+                  <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                    <button onClick={(e) => { e.stopPropagation(); addOne(c); }} aria-label={`Add ${c.name} to voting`}
+                      style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:10.5, fontWeight:700, padding:"5px 6px", borderRadius:8, background:gColor(g), color:"#fff", border:"none" }}>
+                      <Ic n="plus" s={11} c="#fff" /> Add
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); passOne(c); }} aria-label={`Hard pass on ${c.name} — never show it again`}
+                      style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:10.5, fontWeight:600, padding:"5px 6px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.clay }}>
+                      <Ic n="ban" s={11} c={C.clay} /> Hard pass
+                    </button>
+                  </div>
                 </div>
               );
             })}
