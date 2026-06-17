@@ -59,30 +59,30 @@ function Ic({ n, s = 16, c = "currentColor", fill = "none" }) {
 
 /* -------------------------------- names ---------------------------------- */
 const U = (id, name, nicks = []) => ({ id, name, nicks, unisex: true });
-const UNISEX = [ U("lennon","Lennon",["Len","Lenny"]), U("sullivan","Sullivan",["Sully","Sunny"]), U("rory","Rory",["Ro","Rors"]), U("shae","Shae") ];
+const UNISEX = [ U("lennon","Lennon",["Len","Lenny","Lenz"]), U("sullivan","Sullivan",["Sully","Sunny","Van"]), U("rory","Rory",["Ro","Rors","Ror"]), U("shae","Shae",["Shay"]) ];
 const UNISEX_IDS = new Set(UNISEX.map((u) => u.id)); // popularity shown combined across boys + girls
 const NAMES = {
   boy: [
-    { id:"finnegan", name:"Finnegan", nicks:["Finn"] },
-    { id:"sean", name:"Sean", nicks:["Jack"] },
-    { id:"keegan", name:"Keegan", nicks:["Key","Keegs"] },
-    { id:"callan", name:"Callan", nicks:["Cal"] },
-    { id:"calvin", name:"Calvin", nicks:["Cal"] },
-    { id:"mcallister", name:"McAllister", nicks:["Mack","Allister"] },
+    { id:"finnegan", name:"Finnegan", nicks:["Finn","Finny"] },
+    { id:"sean", name:"Sean", nicks:["Jack","Seanie"] },
+    { id:"keegan", name:"Keegan", nicks:["Key","Keegs","Keeg"] },
+    { id:"callan", name:"Callan", nicks:["Cal","Cally"] },
+    { id:"calvin", name:"Calvin", nicks:["Cal","Vin","Cale"] },
+    { id:"mcallister", name:"McAllister", nicks:["Mack","Allister","Mac"] },
     ...UNISEX,
   ],
   girl: [
     { id:"sloane", name:"Sloane", nicks:["Sloey","Loey","Lo"] },
-    { id:"rowan", name:"Rowan", nicks:["Winnie","Robbie"] },
+    { id:"rowan", name:"Rowan", nicks:["Winnie","Robbie","Ro"] },
     { id:"devin", name:"Devin", nicks:["Dev","Devvy"] },
-    { id:"marlowe", name:"Marlowe", nicks:["Lo","Lowie"] },
-    { id:"keelan", name:"Keelin", nicks:["Ollie","Keeley"] },
+    { id:"marlowe", name:"Marlowe", nicks:["Lo","Lowie","Marlo"] },
+    { id:"keelan", name:"Keelin", nicks:["Ollie","Keeley","Keels"] },
     { id:"cloda", name:"Cloda", nicks:["Lo","Lowie","Cloey"] },
     { id:"lowen", name:"Lowen", nicks:["Lo","Lowie","Winnie"] },
-    { id:"bridget", name:"Bridget", nicks:["Birdie","Jett"] },
+    { id:"bridget", name:"Bridget", nicks:["Birdie","Jett","Bridie"] },
     { id:"merritt", name:"Merritt", nicks:["Merry","Ritt"] },
-    { id:"maira", name:"Maira", nicks:["Malley"] },
-    { id:"fiona", name:"Fiona", nicks:["Fio","Oona","Finn"] },
+    { id:"maira", name:"Maira", nicks:["Malley","Mai","Mara"] },
+    { id:"fiona", name:"Fiona", nicks:["Fio","Oona","Finn","Fee"] },
     ...UNISEX,
   ],
 };
@@ -3219,7 +3219,7 @@ function App() {
       {view === "rankings" && (unlocked
         ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onAddNick={addNick} onRemoveNick={removeNick} onReorder={reorderRank} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
-      {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} />}
+      {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} onAddNick={addNick} onRemoveNick={removeNick} />}
       {view === "trends" && (unlocked
         ? <Trends data={data} profile={profile} />
         : <LockMsg myVotes={myVotes} />)}
@@ -4590,7 +4590,7 @@ function Trends({ data, profile }) {
 }
 
 /* ---------------------- "For you" suggestions ---------------------------- */
-function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore }) {
+function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore, onAddNick, onRemoveNick }) {
   const [g, setG] = useState(initialGender || "girl");
   const [lastAdded, setLastAdded] = useState(null);
   const [lastDismissed, setLastDismissed] = useState(null);
@@ -4750,7 +4750,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                     <span style={{ fontFamily:DISPLAY, fontSize:22, color:C.ink }}>{c.name}</span>
                     {SAY[c.id] && <span style={{ fontSize:11, color:C.clay, fontStyle:"italic" }}>“{SAY[c.id]}”</span>}
                     {f.lean === "u" && <span style={{ fontSize:10, fontWeight:700, color:C.teal, letterSpacing:0.4 }}>UNISEX</span>}
-                    {nick && <span style={{ fontSize:12, color:C.muted }}>“{nick}”</span>}
                   </div>
                   <div style={{ fontSize:12.5, color:C.muted, margin:"2px 0 6px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:2 }}>
@@ -4760,6 +4759,9 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                     ))}
                   </div>
                   <PopLine id={c.id} gender={g} compact meaningShown />
+                  <div style={{ marginTop:6 }}>
+                    <NickEditor id={c.id} nicks={mergeNicks({ id: c.id, nicks: c.nicks || [] }).nicks} added={(data.addnicks || {})[c.id]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} />
+                  </div>
                 </div>
                 <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"stretch", gap:6 }}>
                   <button onClick={() => add(item)} className="lift"
