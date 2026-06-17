@@ -4131,7 +4131,7 @@ function nameAttrib(n) {
 }
 // Join a few names conversationally: "A", "A & B", "A, B & 2 more".
 const fmtNames = (arr) => (arr.length <= 1 ? (arr[0] || "") : arr.length === 2 ? `${arr[0]} & ${arr[1]}` : `${arr.slice(0, 2).join(", ")} & ${arr.length - 2} more`);
-function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, added, onAddNick, onRemoveNick, haters }) {
+function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, added, onAddNick, onRemoveNick, haters, reserveHaters }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
@@ -4141,7 +4141,7 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
     <li style={{ borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
         <span className="disp" style={{ width:24, textAlign:"center", fontSize:18, fontWeight:700, color: accent }}>{rank}</span>
-        <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", justifyContent:"center" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span className="disp" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{r.n.name}</span>
             {attr.kind === "guest" && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added by {attr.name}</span>}
@@ -4162,8 +4162,12 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
           <div style={{ height:6, borderRadius:999, marginTop:6, background:C.line }}>
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
           </div>
-          {haters && haters.length > 0 && (
-            <div style={{ fontSize:11, marginTop:5, color:C.clay, fontWeight:600 }}>💀 {fmtNames(haters)} can’t stand this one</div>
+          {/* Reserve this line for every card in a column that has any haters, so the
+              presence/absence of the dislike note never changes a card's height. */}
+          {(reserveHaters || (haters && haters.length > 0)) && (
+            <div style={{ fontSize:11, marginTop:5, minHeight:16, color:C.clay, fontWeight:600 }}>
+              {haters && haters.length > 0 ? `💀 ${fmtNames(haters)} can’t stand this one` : ""}
+            </div>
           )}
         </div>
         {!readOnly && (
@@ -4185,7 +4189,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const [mode, setMode] = useState("combined");
   // The couple's combined ranking, the family aggregate, and a head-to-head of the
   // couple vs one individual voter.
-  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Crowd Favorites" }, { key: "compare", name: "Compare" }, ...(isOwner(profile) ? [{ key: "mine", name: "My list" }] : [])];
+  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Crowd Favorites" }, { key: "compare", name: "Voter vs. Voter" }, ...(isOwner(profile) ? [{ key: "mine", name: "My list" }] : [])];
   // Two-up head-to-head: pick any two rankings — the couple combined, or any
   // individual who has voted — and see them side by side. Defaults to Claire vs Andrew.
   const voters = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
@@ -4442,6 +4446,9 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const unvoted = rows.filter((r) => !isVetoed(r.n.id) && notVotedYet(r.n.id)).sort((x, y) => x.n.name.localeCompare(y.n.name));
   const max = Math.max(...live.map((r) => r.score), START + 1);
   const min = Math.min(...live.map((r) => r.score), START - 1);
+  // If any name in this column has a hater, reserve the dislike line on every card so
+  // all cards in the column stay the same height (and format) regardless.
+  const anyHaters = live.some((r) => hatersOf(r.n.id).length > 0);
   // No real ranking to show until the relevant person/people have voted.
   const noData = isCombined ? (!cVoted && !aVoted) : isEveryone ? (votedGuests.length === 0) : (sel.votes === 0);
   const emptyMsg = isCombined
@@ -4474,7 +4481,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
             profile={profile} readOnly={readOnly} onVeto={(id) => onVeto(gender, profile, id)} onClaim={onClaim} notes={notes} onSetNote={onSetNote}
-            added={addnicks[r.n.id]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} />
+            added={addnicks[r.n.id]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} reserveHaters={anyHaters} />
         ))}
       </ol>
       {unvoted.length > 0 && (
