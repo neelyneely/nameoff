@@ -301,7 +301,6 @@ const CANDS = [
   C0("boy","soren","Soren",["Sory"],"no",["lyr","sur"],"n",2,{boy:500},"Danish · stern; form of Severus"),
   C0("boy","ames","Ames",[],"en",["sur","pun"],"s",1,{boy:null},"English · friend"),
   C0("boy","cassius","Cassius",["Cass","Cash"],"la",["vin","lit"],"s",3,{boy:350},"Latin · hollow"),
-  C0("boy","bodhi","Bodhi",[],"sk",["nat","lyr"],"y",2,{boy:280},"Sanskrit · awakening, enlightenment"),
   C0("boy","linus","Linus",["Lin"],"gr",["vin","lit"],"s",2,{boy:null},"Greek · flax; the mythic musician"),
   C0("boy","thorne","Thorne",[],"en",["sur","nat","pun"],"n",1,{boy:null},"English · thorn bush"),
   C0("boy","cormac","Cormac",["Mac","Cory"],"ir",["pun","vin"],"k",2,{boy:null},"Irish · charioteer; raven's son"),
@@ -773,7 +772,6 @@ const CSERIES = {
   thea: { girl:{ 2020:303,2021:314,2022:300,2023:321,2024:349,2025:353 } },
   soren: { boy:{ 2020:509,2021:536,2022:533,2023:541,2024:571,2025:464 } },
   cassius: { boy:{ 2020:488,2021:487,2022:549,2023:576,2024:569,2025:583 } },
-  bodhi: { boy:{ 2020:295,2021:284,2022:300,2023:294,2024:301,2025:265 } },
   bowen: { boy:{ 2020:395,2021:368,2022:390,2023:349,2024:321,2025:266 } },
   brennan: { boy:{ 2020:764,2021:872,2022:995,2023:null,2024:null,2025:null } },
   sutton: { boy:{ 2020:580,2021:542,2022:527,2023:446,2024:442,2025:332 } },
@@ -1689,7 +1687,7 @@ function App() {
     if (votable(next, g)) { setPair(pickPair(poolFor(next, g), next[g][profile], null)); }
     else if (votable(next, otherG(g))) { setVoteGender(otherG(g)); setBlockCount(0); }
     else { setPair(null); }
-    showToast(`Vetoed ${nm}`, () => unveto(g, profile, id));
+    showToast(`${isOwner(profile) ? "Vetoed" : "Hard-passed"} ${nm}`, () => unveto(g, profile, id));
   };
   const unveto = (g, profileKey, id) => {
     const next = clone(dataRef.current);
@@ -2308,7 +2306,7 @@ function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big, ca
     </div>
   );
 }
-function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, onRemoveNick, canRemoveNick }) {
+function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, onRemoveNick, canRemoveNick, vetoWord = "Veto" }) {
   const chosen = picked === n.id;
   const accent = gColor(gender);     // pink for girls, blue for boys (follows the matchup)
   const popMode = React.useContext(PopModeCtx);
@@ -2352,9 +2350,9 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, on
         opacity: dim ? 0.4 : 1, transform, transition: dragging ? "none" : "transform .22s ease, border-color .15s ease", touchAction:"pan-y",
         cursor: picked ? "default" : "pointer",
       }}>
-      <button onClick={(e) => { e.stopPropagation(); onVeto(); }} disabled={!!picked} aria-label={`Veto ${n.name}`}
+      <button onClick={(e) => { e.stopPropagation(); onVeto(); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
         className="lift" style={{ position:"absolute", top:10, right:10, display:"flex", alignItems:"center", gap:4, fontSize:11, fontWeight:700, padding:"4px 10px", borderRadius:999, color:C.clay, background:C.bg, border:`1px solid ${C.line}` }}>
-        <Ic n="ban" s={13} /> Veto
+        <Ic n="ban" s={13} /> {vetoWord}
       </button>
       {/* Fixed-height slots so every parallel row lines up across both cards. */}
       <div style={{ minHeight:46, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -2425,11 +2423,11 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, can
     <div className="voteWrap">
       {banner}
       <div className="cards">
-        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} added={(addnicks || {})[a]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} />
+        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} added={(addnicks || {})[a]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} />
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span className="disp" style={{ fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} added={(addnicks || {})[b]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} />
+        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} added={(addnicks || {})[b]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} />
       </div>
       <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
         <button onClick={onBack} disabled={!canGoBack} className="lift" title="Revisit your last vote and change it"
@@ -2473,7 +2471,9 @@ function nameAttrib(n) {
   if (n.by) return { kind: "guest", name: n.byName || n.by };
   return { kind: "unknown" };
 }
-function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, added, onAddNick, onRemoveNick }) {
+// Join a few names conversationally: "A", "A & B", "A, B & 2 more".
+const fmtNames = (arr) => (arr.length <= 1 ? (arr[0] || "") : arr.length === 2 ? `${arr[0]} & ${arr[1]}` : `${arr.slice(0, 2).join(", ")} & ${arr.length - 2} more`);
+function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, added, onAddNick, onRemoveNick, haters }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
@@ -2504,6 +2504,9 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
           <div style={{ height:6, borderRadius:999, marginTop:6, background:C.line }}>
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
           </div>
+          {haters && haters.length > 0 && (
+            <div style={{ fontSize:11, marginTop:5, color:C.clay, fontWeight:600 }}>💀 {fmtNames(haters)} can’t stand this one</div>
+          )}
         </div>
         {!readOnly && (
           <button onClick={() => onVeto(r.n.id)} className="lift" aria-label={`Veto ${r.n.name}`} title="Veto" style={{ display:"flex", padding:2, color:C.clay, opacity:0.5 }}>
@@ -2524,7 +2527,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const [mode, setMode] = useState("combined");
   // The couple's combined ranking, the family aggregate, and a head-to-head of the
   // couple vs one individual voter.
-  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Fam and Friends" }, { key: "compare", name: "Us vs…" }];
+  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Crowd Favorites" }, { key: "compare", name: "Us vs. Them" }];
   // Anyone (owner or guest) who has cast a vote can be the individual to compare against.
   const people = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
   const [cmpKey, setCmpKey] = useState(() => { const g = people.find((p) => !isOwner(p.key)) || people[0]; return g ? g.key : null; });
@@ -2546,17 +2549,15 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
           </div>
         ) : (<>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6, alignItems:"center" }}>
-            <span style={{ fontSize:12, color:C.muted, marginRight:2 }}>Your combined ranking vs:</span>
+            <span style={{ fontSize:12, color:C.muted, marginRight:2 }}>Neely-Stevenson vs:</span>
             {people.map((p) => (
               <button key={p.key} onClick={() => setCmpKey(p.key)} className="lift" style={{ padding:"4px 12px", borderRadius:999, fontSize:13, fontWeight:700, border:`1px solid ${cmp === p.key ? "transparent" : C.line}`,
                 ...(cmp === p.key ? { background:C.clay, color:"#fff" } : { background:C.paper, color:C.muted }) }}>{p.name}{p.key === profile ? " (you)" : ""}</button>
             ))}
           </div>
-          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Ordered by your ranking. <span style={{ color:C.sage, fontWeight:700 }}>▲</span> {data.profiles[cmp]} ranks it higher than you · <span style={{ color:C.clay, fontWeight:700 }}>▼</span> lower.</p>
-          <div className="twocol">
-            <CompareColumn gender="girl" title="Girls" data={data} personKey={cmp} />
-            <CompareColumn gender="boy" title="Boys" data={data} personKey={cmp} />
-          </div>
+          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Each ranking top-to-bottom, side by side: <b style={{ color:C.teal }}>your</b> order and <b style={{ color:C.clay }}>{data.profiles[cmp]}</b>’s.</p>
+          <CompareGender gender="girl" title="Girls" data={data} personKey={cmp} />
+          <CompareGender gender="boy" title="Boys" data={data} personKey={cmp} />
         </>)
       ) : (
         <div className="twocol">
@@ -2634,6 +2635,8 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   const myVeto = isOwner(profile) ? (data[gender][profile].vetoed || []) : [];
   const guestKeys = data.roster.filter((p) => !isOwner(p.key)).map((p) => p.key);
   const votedGuests = guestKeys.filter((k) => data[gender][k].votes > 0);
+  // Family/friends who hard-passed a name (their veto shows as "can't stand it", not a removal).
+  const hatersOf = (id) => guestKeys.filter((k) => (data[gender][k].vetoed || []).includes(id)).map((k) => data.profiles[k] || k);
   // Average only family members who actually rated this name (don't pad non-raters
   // with the START default, which would drag every score toward 1500).
   const everyoneScore = (id) => { const rs = votedGuests.filter((k) => data[gender][k].ratings[id] != null); return rs.length ? rs.reduce((s, k) => s + data[gender][k].ratings[id], 0) / rs.length : START; };
@@ -2712,7 +2715,7 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
             profile={profile} readOnly={readOnly} onVeto={(id) => onVeto(gender, profile, id)} onClaim={onClaim} notes={notes} onSetNote={onSetNote}
-            added={addnicks[r.n.id]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+            added={addnicks[r.n.id]} onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} />
         ))}
       </ol>
       {unvoted.length > 0 && (
