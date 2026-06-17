@@ -2457,8 +2457,8 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
         <line x1={padL} y1={padT} x2={padL} y2={S - padB} stroke={C.line} strokeWidth="1.5" />
         <line x1={padL} y1={S - padB} x2={S - padR} y2={S - padB} stroke={C.line} strokeWidth="1.5" />
         {/* axis labels: centered along each axis */}
-        <text x={11} y={yMid} textAnchor="middle" transform={`rotate(-90 11 ${yMid})`} fontSize="11.5" fontWeight="800" fill={yColor}>{yLabel}</text>
-        <text x={xMid} y={S - padB + 22} textAnchor="middle" fontSize="10.5" fontWeight="800" fill={xColor}>{xLabel}</text>
+        <text x={18} y={yMid} textAnchor="middle" transform={`rotate(-90 18 ${yMid})`} fontSize="11.5" fontWeight="800" fill={yColor}>{yLabel}</text>
+        <text x={xMid} y={S - padB + 15} textAnchor="middle" fontSize="10.5" fontWeight="800" fill={xColor}>{xLabel}</text>
         {pts.map((p) => {
           const col = dotColor(p.x, p.y);
           return (
@@ -2483,7 +2483,7 @@ function AgreementView({ data, gender, names }) {
   const xr = ranksOf(c.ratings, names), yr = ranksOf(a.ratings, names);
   return (
     <div>
-      <ScatterCompare names={names} xr={xr} yr={yr} xName="Claire" yName="Andrew" xColor={C.claire} yColor={C.andrew} />
+      <ScatterCompare names={names} xr={xr} yr={yr} xName="Neely" yName="Stevenson" xColor={C.claire} yColor={C.andrew} />
     </div>
   );
 }
@@ -2531,7 +2531,7 @@ function Trends({ data, profile }) {
   // Drop names vetoed by either owner; vetoed names shouldn't appear anywhere in Trends.
   const vetoed = new Set([...data[g].claire.vetoed, ...data[g].andrew.vetoed]);
   const names = namesFor(g, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
-  const modes = [["byName","Compare names"],["compare","Compare voters"],["agree","Agreement"],["fam","Fam and Friends vs Neely Stevenson"]];
+  const modes = [["byName","Compare names"],["compare","Compare voters"],["agree","Neely vs Stevenson"],["fam","Fam and co. vs. Neely-Stevenson"]];
   return (
     <div>
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
