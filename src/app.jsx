@@ -211,7 +211,7 @@ const MEANING = {
   fiona:    "Scottish · 'fair, white'",
   wren:     "English · the small, lively songbird",
   maeve:    "Irish · 'she who intoxicates'; warrior queen Medb",
-  niamh:    "Irish · 'bright, radiant' (say 'Neev')",
+  niamh:    "Irish · 'bright, radiant'",
   savannah: "English · flat tropical grassland; from Taíno 'sabana'",
   margaret: "Greek · 'pearl'",
   leona:    "Latin · 'lioness'",
@@ -1570,7 +1570,11 @@ const SAY = {
   brennan:"BREN-in", bowen:"BOH-en", arden:"AR-den", ellis:"EL-iss", tegan:"TEG-ən", maren:"MAH-ren",
   della:"DEL-ah", iris:"EYE-riss", nora:"NOR-ah", linus:"LY-nəs", arlo:"AR-loh", emmett:"EM-it",
   everett:"EV-rit", emerson:"EM-er-sən", ellison:"EL-ih-sən", indigo:"IN-dih-goh", marigold:"MARE-ih-gold",
+  // roster names whose spelling hides the sound
+  niamh:"NEEV", seamus:"SHAY-məs", saoirse:"SEER-shə", cloda:"KLOH-də", maira:"MY-rah", keelan:"KEE-lin", lowen:"LOH-ən", conall:"KON-əl", sloane:"SLOHN", maeve:"MAYV",
 };
+// Pronunciation hint for any name (subtle, shown the same way on every card).
+const sayOf = (id) => SAY[id] || null;
 // Real SSA national rank trajectories (2020–2025) for the candidate pool, parsed
 // from the official "Popular Baby Names" tables. null = outside the top 1000 that
 // year. Folded in non-destructively, so roster names keep their own verified data.
@@ -3453,6 +3457,24 @@ function App() {
     save({ notes });
   };
 
+  // Drag-reorder your own ranking: set the moved name's rating to sit between its
+  // new neighbours (a "nudge" — future votes can still move it). aboveId/belowId
+  // are the names it should land between (null = dropped at the very top/bottom).
+  const reorderRank = (g, id, aboveId, belowId) => {
+    const next = clone(dataRef.current);
+    const cur = next[g][profile];
+    const rA = aboveId != null ? (cur.ratings[aboveId] ?? START) : null;
+    const rB = belowId != null ? (cur.ratings[belowId] ?? START) : null;
+    let nr;
+    if (rA == null && rB == null) nr = START;
+    else if (rA == null) nr = rB + 30;          // dropped at the top
+    else if (rB == null) nr = rA - 30;          // dropped at the bottom
+    else nr = (rA + rB) / 2;                     // between two names
+    cur.ratings[id] = nr;
+    dataRef.current = next; setData(next);
+    save({ [kCore(g, profile)]: coreOf(cur) });
+  };
+
   const doReset = () => {
     const g = voteGender;
     const next = clone(dataRef.current);
@@ -3518,7 +3540,7 @@ function App() {
         onBack={goBack} canGoBack={canGoBack} profile={profile}
         addnicks={data.addnicks} onAddNick={addNick} onRemoveNick={removeNick} />}
       {view === "rankings" && (unlocked
-        ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onAddNick={addNick} onRemoveNick={removeNick} notes={data.notes} onSetNote={setNote} />
+        ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onAddNick={addNick} onRemoveNick={removeNick} onReorder={reorderRank} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
       {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} />}
       {view === "trends" && (unlocked
@@ -3993,6 +4015,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, on
       <div style={{ minHeight:46, display:"flex", alignItems:"center", justifyContent:"center" }}>
         <span className="disp" style={{ fontSize:36, fontWeight:800, lineHeight:1.04, color:C.ink }}>{n.name}</span>
       </div>
+      <div style={{ minHeight:14, fontSize:11.5, color:C.clay, fontStyle:"italic" }}>{sayOf(n.id) ? `“${sayOf(n.id)}”` : ""}</div>
       <div style={{ minHeight:28, marginTop:8, display:"flex", justifyContent:"center", alignItems:"center" }}>
         {onAddNick
           ? <NickEditor id={n.id} nicks={n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={canRemoveNick} center big />
@@ -4158,11 +4181,11 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
     </li>
   );
 }
-function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemoveNick, notes, onSetNote }) {
+function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemoveNick, onReorder, notes, onSetNote }) {
   const [mode, setMode] = useState("combined");
   // The couple's combined ranking, the family aggregate, and a head-to-head of the
   // couple vs one individual voter.
-  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Crowd Favorites" }, { key: "compare", name: "Compare" }];
+  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Crowd Favorites" }, { key: "compare", name: "Compare" }, ...(isOwner(profile) ? [{ key: "mine", name: "My list" }] : [])];
   // Two-up head-to-head: pick any two rankings — the couple combined, or any
   // individual who has voted — and see them side by side. Defaults to Claire vs Andrew.
   const voters = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
@@ -4173,7 +4196,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const lk = sideValid(leftKey) ? leftKey : (sides[0] ? sides[0].key : null);
   const rk = sideValid(rightKey) ? rightKey : (sides.find((s) => s.key !== lk) || sides[0] || {}).key;
   const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage notes/vetoes on the couple's ranking only
-  const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : C.clay);
+  const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : k === "mine" ? pColor(profile) : C.clay);
   const sideColor = (k) => (k === "combined" ? C.teal : isOwner(k) ? pColor(k) : C.clay);
   const PickRow = ({ label, sel, onPick }) => (
     <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
@@ -4206,6 +4229,14 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
           <CompareGender gender="girl" title="Girls" data={data} leftKey={lk} rightKey={rk} />
           <CompareGender gender="boy" title="Boys" data={data} leftKey={lk} rightKey={rk} />
         </>)
+      ) : mode === "mine" ? (
+        <>
+          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Your own ranking. Drag the <b>≡</b> handle to reorder — voting can still nudge things afterward.</p>
+          <div className="twocol">
+            <MyRankColumn gender="girl" title="Girls" data={data} profile={profile} onReorder={onReorder} />
+            <MyRankColumn gender="boy" title="Boys" data={data} profile={profile} onReorder={onReorder} />
+          </div>
+        </>
       ) : (
         <div className="twocol">
           <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
@@ -4272,6 +4303,77 @@ function CompareGender({ gender, title, data, leftKey, rightKey }) {
           <Column side={L} list={lList} />
           <Column side={R} list={rList} />
         </div>
+      )}
+    </div>
+  );
+}
+// The current owner's own ranking, drag-to-reorder. Grab the ≡ handle and drag;
+// on drop we set the moved name's rating between its new neighbours (a nudge).
+// Pointer-based so it works on phone and desktop.
+function MyRankColumn({ gender, title, data, profile, onReorder }) {
+  const names = namesFor(gender, data.custom, data.removed);
+  const cur = data[gender][profile] || { ratings:{}, votes:0 };
+  const benched = new Set([...(data[gender].claire.vetoed || []), ...(data[gender].andrew.vetoed || [])]);
+  const ordered = names.filter((n) => !benched.has(n.id))
+    .sort((x, y) => ((cur.ratings[y.id] ?? START) - (cur.ratings[x.id] ?? START)) || x.name.localeCompare(y.name));
+  const [drag, setDrag] = useState(null); // dragged id
+  const [tgt, setTgt] = useState(null);   // { idx, after }
+  const down = (e, id) => {
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    setDrag(id); setTgt(null);
+  };
+  const move = (e) => {
+    if (drag == null) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const row = el && el.closest && el.closest("[data-ri]");
+    if (row) {
+      const idx = +row.getAttribute("data-ri");
+      const r = row.getBoundingClientRect();
+      setTgt({ idx, after: e.clientY > r.top + r.height / 2 });
+    }
+  };
+  const up = () => {
+    if (drag != null && tgt) {
+      const hovered = ordered[tgt.idx];
+      if (hovered && hovered.id !== drag) {
+        const ex = ordered.filter((n) => n.id !== drag);
+        let exIdx = ex.findIndex((n) => n.id === hovered.id);
+        if (tgt.after) exIdx += 1;
+        const above = ex[exIdx - 1] || null, below = ex[exIdx] || null;
+        onReorder(gender, drag, above ? above.id : null, below ? below.id : null);
+      }
+    }
+    setDrag(null); setTgt(null);
+  };
+  return (
+    <div style={{ flex:1, minWidth:0 }}>
+      <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
+        <h3 className="disp" style={{ margin:0, fontSize:20, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
+      </div>
+      {!cur.votes ? (
+        <div style={{ borderRadius:12, padding:"36px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+          <p style={{ fontSize:14, margin:0 }}>Vote on a few {gender === "boy" ? "boys" : "girls"} first, then drag to fine-tune your order.</p>
+        </div>
+      ) : (
+        <ol style={{ display:"flex", flexDirection:"column", gap:5 }}>
+          {ordered.map((n, i) => {
+            const isDrag = drag === n.id;
+            const isTgt = drag != null && tgt && tgt.idx === i && !isDrag;
+            return (
+              <li key={n.id} data-ri={i}
+                style={{ display:"flex", alignItems:"center", gap:8, borderRadius:10, padding:"8px 10px", background:C.paper,
+                  border:`1px solid ${C.line}`, opacity:isDrag ? 0.45 : 1,
+                  boxShadow: isTgt ? `inset 0 ${tgt.after ? -3 : 3}px 0 ${pColor(profile)}` : "none" }}>
+                <button onPointerDown={(e) => down(e, n.id)} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+                  aria-label={`Drag ${n.name} to reorder`} title="Drag to reorder"
+                  style={{ display:"flex", touchAction:"none", cursor:"grab", color:C.muted, padding:2 }}><Ic n="list" s={16} /></button>
+                <span className="disp" style={{ fontSize:14, fontWeight:700, color:C.muted, minWidth:18 }}>{i + 1}</span>
+                <span className="disp" style={{ flex:1, minWidth:0, fontSize:16, fontWeight:700, color:C.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{n.name}</span>
+              </li>
+            );
+          })}
+        </ol>
       )}
     </div>
   );
