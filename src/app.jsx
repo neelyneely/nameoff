@@ -4775,28 +4775,8 @@ const ranksOf = (ratings, names) =>
 
 const store = makeStore();
 
-// A quick burst of falling confetti. Pure DOM so it works from any handler;
-// respects reduced-motion and cleans itself up.
-function fireConfetti(n = 44) {
-  try {
-    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const wrap = document.createElement("div");
-    wrap.className = "no-confetti";
-    const colors = ["#C9821A", "#566B36", "#B5677B", "#3F6CA3", "#A4663A", "#2E4756", "#E0B23C"];
-    for (let i = 0; i < n; i++) {
-      const p = document.createElement("i");
-      p.style.left = (Math.random() * 100) + "vw";
-      p.style.background = colors[i % colors.length];
-      p.style.setProperty("--d", (1.5 + Math.random() * 1.3) + "s");
-      p.style.setProperty("--r", (Math.random() * 900 - 200) + "deg");
-      p.style.animationDelay = (Math.random() * 0.35) + "s";
-      if (i % 3 === 0) p.style.borderRadius = "50%";
-      wrap.appendChild(p);
-    }
-    document.body.appendChild(wrap);
-    setTimeout(() => wrap.remove(), 3200);
-  } catch {}
-}
+// Confetti removed by request — no-op so any caller produces nothing.
+function fireConfetti() {}
 // Transient celebration overlay (couple match, vote milestones). Auto-dismisses.
 function Celebrate({ data, onClose }) {
   React.useEffect(() => {
