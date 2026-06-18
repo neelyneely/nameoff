@@ -4775,8 +4775,28 @@ const ranksOf = (ratings, names) =>
 
 const store = makeStore();
 
-// Confetti removed by request — no-op so any caller produces nothing.
-function fireConfetti() {}
+// A quick burst of falling confetti. Pure DOM so it works from any handler;
+// respects reduced-motion and cleans itself up. (Used only on the 10-vote unlock.)
+function fireConfetti(n = 44) {
+  try {
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const wrap = document.createElement("div");
+    wrap.className = "no-confetti";
+    const colors = ["#C9821A", "#566B36", "#B5677B", "#3F6CA3", "#A4663A", "#2E4756", "#E0B23C"];
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement("i");
+      p.style.left = (Math.random() * 100) + "vw";
+      p.style.background = colors[i % colors.length];
+      p.style.setProperty("--d", (1.5 + Math.random() * 1.3) + "s");
+      p.style.setProperty("--r", (Math.random() * 900 - 200) + "deg");
+      p.style.animationDelay = (Math.random() * 0.35) + "s";
+      if (i % 3 === 0) p.style.borderRadius = "50%";
+      wrap.appendChild(p);
+    }
+    document.body.appendChild(wrap);
+    setTimeout(() => wrap.remove(), 3200);
+  } catch {}
+}
 // Transient celebration overlay (couple match, vote milestones). Auto-dismisses.
 function Celebrate({ data, onClose }) {
   React.useEffect(() => {
@@ -4955,8 +4975,7 @@ function App() {
       votingRef.current = false;
       // Little milestone celebrations: the 10-vote unlock, then every 25.
       const total = (next.boy[profile].votes || 0) + (next.girl[profile].votes || 0);
-      if (total === UNLOCK_VOTES) celebrateNow({ title: "Rankings unlocked!", emoji: "🔓", note: `${total} votes in — Rankings & Trends are open.` });
-      else if (total > 0 && total % 25 === 0) celebrateNow({ title: `${total} votes!`, emoji: "🎉", note: "You two are really dialing it in." });
+      if (total === UNLOCK_VOTES) celebrateNow({ title: "Rankings unlocked!", emoji: "🎉", note: `${total} votes in — Rankings & Trends are open.` });
     }, 280);
   };
   const skip = () => {
