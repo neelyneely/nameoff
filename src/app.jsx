@@ -6048,7 +6048,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
             <PickRow label="Left" sel={lk} onPick={setLeftKey} />
             <PickRow label="Right" sel={rk} onPick={setRightKey} />
           </div>
-          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Each ranking top-to-bottom, side by side. Names the two rank very differently are outlined.</p>
+          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Each ranking top-to-bottom, side by side. Names you <b style={{ color:C.sage }}>both rank highly</b> are outlined in green.</p>
           <CompareGender gender="girl" title="Girls" data={data} leftKey={lk} rightKey={rk} />
           <CompareGender gender="boy" title="Boys" data={data} leftKey={lk} rightKey={rk} />
         </>)
@@ -6072,7 +6072,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
 }
 // Head-to-head: one gender block with TWO ordered columns side by side — the
 // couple's combined ranking and the selected individual's ranking, each 1->N.
-// Names ranked very differently between the two outline in clay so clashes pop.
+// Names both sides rank similarly AND high (shared favorites) outline in green.
 function CompareGender({ gender, title, data, leftKey, rightKey }) {
   const names = namesFor(gender, data.custom, data.removed);
   const c = data[gender].claire, a = data[gender].andrew;
@@ -6100,9 +6100,10 @@ function CompareGender({ gender, title, data, leftKey, rightKey }) {
       <div style={{ fontSize:11, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em", color: side.color, marginBottom:6, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{side.label}</div>
       <ol style={{ display:"flex", flexDirection:"column", gap:5 }}>
         {list.map((n, i) => {
-          const moved = Math.abs(lPos[n.id] - rPos[n.id]) >= big;
+          // Highlight shared favorites: both rank it similarly AND at least one ranks it high.
+          const agree = Math.abs(lPos[n.id] - rPos[n.id]) < big && Math.min(lPos[n.id], rPos[n.id]) < big;
           return (
-            <li key={n.id} style={{ display:"flex", alignItems:"baseline", gap:7, borderRadius:9, padding:"6px 9px", background:C.paper, border:`1px solid ${moved ? C.clay : C.line}` }}>
+            <li key={n.id} style={{ display:"flex", alignItems:"baseline", gap:7, borderRadius:9, padding:"6px 9px", background: agree ? `${C.sage}14` : C.paper, border:`1px solid ${agree ? C.sage : C.line}` }}>
               <span className="disp" style={{ fontSize:13, fontWeight:700, color:C.muted, minWidth:16 }}>{i + 1}</span>
               <span className="disp" style={{ fontSize:15, fontWeight:700, color:C.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{n.name}</span>
             </li>
