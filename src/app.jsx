@@ -390,6 +390,7 @@ const CANDS = [
   C0("girl","maggie","Maggie",[],"gr",["vin","lyr"],"e",2,{girl:294},"Greek · pearl"),
   C0("girl","frances","Frances",["Frankie","Fran"],"la",["vin"],"s",2,{girl:318},"Latin · free one"),
   C0("girl","matilda","Matilda",["Tilly","Mattie"],"ge",["vin","lit"],"a",3,{girl:365},"German · mighty in battle"),
+  C0("girl","mathilda","Mathilda",["Tilly","Mattie"],"ge",["vin","lit"],"a",3,{girl:null},"German · mighty in battle"),
   C0("girl","cecilia","Cecilia",["Cece"],"la",["vin","lyr"],"a",4,{girl:108},"Latin · patron of music"),
   C0("girl","harriet","Harriet",["Hattie"],"ge",["vin"],"t",3,{girl:null},"German · home ruler"),
   C0("girl","poppy","Poppy",[],"en",["nat","lyr"],"y",2,{girl:292},"English · the poppy flower"),
