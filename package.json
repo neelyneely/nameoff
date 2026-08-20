@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Name·Off — head-to-head baby-name ranking app (single-file offline build)",
+  "description": "Name\u00b7Off \u2014 head-to-head baby-name ranking app (single-file offline build)",
   "scripts": {
     "build": "node build.mjs",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=nameoff",
-    "preview": "npm run build && echo 'Open dist/index.html in a browser.'"
+    "preview": "npm run build && echo 'Open dist/index.html in a browser.'",
+    "test": "node test/model.mjs"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

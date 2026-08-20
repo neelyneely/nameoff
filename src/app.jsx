@@ -4435,13 +4435,52 @@ const TW = { o:0.3, s:1.4, end:1.0, syl:0.3, lean:0.6, tier:0.7, nick:0.5 };
 // ~15 votes as the learned signal takes over.
 const PRIOR = { "s:sur":1.2, "s:lyr":1.0, "s:nat":0.4, "s:vin":0.3, "tier:uncommon":1.0, "tier:rare":0.6, "lean:u":0.5, "nick:1":0.5 };
 
+/* ---- features for a name we don't have a row for -------------------------
+ * Used by "names you already love": when someone types a name that isn't in
+ * FEAT, we read what we can off the spelling. Measured against all 2036 curated
+ * entries: `end` as the plain last letter is right 99.4% of the time, which beat
+ * both a digraph map (98.6%) and a phonetic silent-e rule (86.4%) — Maeve→v and
+ * Cormac→k are real but they're 13 rows out of 2036. Don't "fix" this into
+ * something cleverer; cleverer measured worse.
+ * Syllables by vowel group: 87.6% exact, 100% within one — fine, since TW.syl
+ * (0.3) is the lightest weight in the model.
+ * Origin and popularity tier are left OUT on purpose: we can't read origin off a
+ * string, and a name missing from our table says something about the table, not
+ * about how rare the name is. */
+const normName = (raw) => (raw || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+const endOf = (raw) => { const w = normName(raw); return w ? w.slice(-1) : null; };
+const sylOf = (raw) => {
+  const w = normName(raw);
+  if (!w) return null;
+  let n = (w.replace(/([aeiouy])\1+/g, "$1").match(/[aeiouy]+/g) || []).length;
+  if (/[^aeiouy]e$/.test(w)) n -= 1;   // silent final e (Claude, Jane)
+  if (/[^aeiouy]le$/.test(w)) n += 1;  // ...but -le is its own beat (Amabel→Ama-ble)
+  return Math.max(1, Math.min(5, n));
+};
+// Everything we can infer about a typed name, plus whatever vibe tags the person
+// picked. `lean` comes from the list they were looking at when they typed it.
+const derivedFeat = (raw, gender, tags) => ({
+  end: endOf(raw), syl: sylOf(raw), s: tags || [],
+  lean: gender === "boy" ? "b" : "g",
+});
+// How hard a typed favourite pulls the model. In band with what's already there:
+// a name rated 1700 over 4+ matches is 2.5, a veto is -4, a doubled-up Tune
+// "love" is 3.0. A typed name is deliberate but unverified by any head-to-head.
+const LIKE_W = 2.0;
+// ...and it counts as roughly two votes' worth of evidence when fading the
+// cold-start prior, so five typed names actually displace the generic seed taste.
+const LIKE_AS_VOTES = 2;
+
 // Score the candidate pool for one voter + gender. Returns [{c, sc, f}] desc.
 function suggestNames(data, profile, gender) {
   const pg = data[gender][profile];
   const roster = namesFor(gender, data.custom, data.removed);
+  // Names this voter typed under "names you already love" — private to them.
+  const likes = pg.likes || {};
   // Match on the id AND the displayed spelling's slug, so a renamed roster name
   // (Shae → Shea) doesn't come back as a "new" suggestion under its own entry.
   const present = new Set(roster.flatMap((x) => [x.id, slug(x.name)]));
+  Object.keys(likes).forEach((id) => present.add(id)); // never suggest a name they told us they love
   const removed = new Set(data.removed || []);
   const explore = pg.explore || {};
   // Names the voter passed on — hidden, but NOT trained on (the dislike
@@ -4468,22 +4507,33 @@ function suggestNames(data, profile, gender) {
   // 2. Learn a preference per feature value (shrunk toward 0 when sparse).
   const acc = {};
   const bump = (k, v) => { const a = acc[k] || (acc[k] = { s:0, n:0 }); a.s += v; a.n++; };
-  const train = (id) => {
-    const f = FEAT[id]; if (!f) return;
-    const wt = w[id] || 0;
-    bump("o:" + f.o, wt);
-    f.s.forEach((t) => bump("s:" + t, wt));
-    bump("end:" + f.end, wt);
-    bump("syl:" + f.syl, wt);
-    bump("lean:" + f.lean, wt);
-    bump("tier:" + tierKeyFor(id, gender), wt);
-    bump("nick:" + (f.nk ? 1 : 0), wt);
+  // Bumps only the features a vector actually carries, so a name we derived from
+  // its spelling (no origin, no tier) trains on what we DO know instead of being
+  // dropped entirely.
+  const trainVec = (f, wt, tierKey) => {
+    if (!f) return;
+    if (f.o) bump("o:" + f.o, wt);
+    (f.s || []).forEach((t) => bump("s:" + t, wt));
+    if (f.end) bump("end:" + f.end, wt);
+    if (f.syl) bump("syl:" + f.syl, wt);
+    if (f.lean) bump("lean:" + f.lean, wt);
+    if (tierKey) bump("tier:" + tierKey, wt);
+    if (f.nk != null) bump("nick:" + (f.nk ? 1 : 0), wt);
   };
+  const train = (id) => trainVec(FEAT[id], w[id] || 0, FEAT[id] && tierKeyFor(id, gender));
   roster.forEach((nm) => train(nm.id));
   Object.keys(explore).forEach((id) => { if (FEAT[id] && !present.has(id) && !dismissed[id]) train(id); });
+  // A typed favourite trains at full weight whether or not we had a row for it.
+  Object.keys(likes).forEach((id) => {
+    const known = FEAT[id];
+    trainVec(known || likes[id].f, LIKE_W, known ? tierKeyFor(id, gender) : null);
+  });
   const learned = {};
   Object.keys(acc).forEach((k) => { learned[k] = acc[k].s / (2 + acc[k].n); });
-  const alpha = Math.max(0, Math.min(1, 1 - (pg.votes || 0) / 15)); // prior weight
+  // Fade the cold-start prior on evidence of any kind, not just votes — otherwise
+  // someone who types six names they love still gets the app's generic taste.
+  const evidence = (pg.votes || 0) + LIKE_AS_VOTES * Object.keys(likes).length;
+  const alpha = Math.max(0, Math.min(1, 1 - evidence / 15)); // prior weight
   const P = (k) => (learned[k] || 0) + alpha * (PRIOR[k] || 0);
   const DIRECT = 0.6; // weight on a candidate's OWN mash-up signal
   // 3. Score unseen candidates (skip roster/removed/dismissed, hide "pass both").
@@ -4749,7 +4799,7 @@ function namesFor(gender, custom, removed) {
     .map((n) => (SPELLINGS[n.id] && SPELLINGS[n.id] !== n.name ? { ...n, name: SPELLINGS[n.id] } : n));
 }
 const findName = (names, id) => names.find((n) => n.id === id) || { id, name: id, nicks: [] };
-const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred, explore: pg.explore || {}, dismissed: pg.dismissed || {} });
+const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred, explore: pg.explore || {}, dismissed: pg.dismissed || {}, likes: pg.likes || {} });
 const trimHistory = (h) => {
   let a = h.slice(-HISTORY_CAP);
   while (JSON.stringify(a).length > 45000 && a.length > 10) a = a.slice(Math.ceil(a.length * 0.1));
@@ -4803,7 +4853,7 @@ function fmtWhen(t, now) {
 function emptyPG(gender, custom) {
   const ratings = {}, matches = {};
   namesFor(gender, custom).forEach((n) => { ratings[n.id] = START; matches[n.id] = 0; });
-  return { ratings, matches, votes: 0, vetoed: [], starred: [], history: [], explore: {}, dismissed: {} };
+  return { ratings, matches, votes: 0, vetoed: [], starred: [], history: [], explore: {}, dismissed: {}, likes: {} };
 }
 function assemble(map) {
   const custom = Array.isArray(map.custom) ? map.custom : [];
@@ -4838,7 +4888,7 @@ function assemble(map) {
     const pg = {
       ratings: core.ratings || {}, matches: core.matches || {},
       votes: core.votes || 0, vetoed: core.vetoed || [], starred: core.starred || [],
-      explore: core.explore || {}, dismissed: core.dismissed || {},
+      explore: core.explore || {}, dismissed: core.dismissed || {}, likes: core.likes || {},
       history: Array.isArray(hist) ? hist : [],
     };
     namesFor(g, custom).forEach((n) => {
@@ -5314,6 +5364,55 @@ function App() {
   };
   // Passing on a suggestion: hide the name (does NOT train the
   // style model). reason is optional free text the voter can add later.
+  // "Names you already love": a private, per-voter taste signal that trains the
+  // recommender (see suggestNames) and deliberately never touches voting — the
+  // header's "+ Add name" is what puts a name in front of everyone.
+  // Returns the id it stored, or null if it declined, so the caller knows whether
+  // to follow up asking for vibe tags.
+  const addLike = (gender, raw, tags) => {
+    const name = (raw || "").trim().replace(/\s+/g, " ");
+    if (!name) return null;
+    const id = slug(name);
+    const next = clone(dataRef.current);
+    const cur = next[gender][profile];
+    const likes = { ...(cur.likes || {}) };
+    if (likes[id]) return id;                       // already on the list
+    // A name that's already in the rotation has real vote evidence behind it;
+    // recording it here too would just double-count the same opinion.
+    const onRoster = namesFor(gender, next.custom, next.removed)
+      .some((n) => n.id === id || slug(n.name) === id);
+    if (onRoster) { showToast(`${name} is already in your voting list`); return null; }
+    likes[id] = FEAT[id] ? { n: name, t: Date.now() }
+                         : { n: name, t: Date.now(), f: derivedFeat(name, gender, tags || []) };
+    cur.likes = likes;
+    dataRef.current = next; setData(next);
+    save({ [kCore(gender, profile)]: coreOf(cur) });
+    return id;
+  };
+  const removeLike = (gender, id) => {
+    const next = clone(dataRef.current);
+    const cur = next[gender][profile];
+    const likes = { ...(cur.likes || {}) };
+    const gone = likes[id];
+    delete likes[id];
+    cur.likes = likes;
+    dataRef.current = next; setData(next);
+    save({ [kCore(gender, profile)]: coreOf(cur) });
+    if (gone) showToast(`Removed ${gone.n || id}`, () => addLike(gender, gone.n || id, (gone.f || {}).s));
+  };
+  // Re-tag a name we had no row for. Only meaningful for derived entries.
+  const setLikeTags = (gender, id, tags) => {
+    const next = clone(dataRef.current);
+    const cur = next[gender][profile];
+    const likes = { ...(cur.likes || {}) };
+    const cur1 = likes[id];
+    if (!cur1 || !cur1.f) return;
+    likes[id] = { ...cur1, f: { ...cur1.f, s: tags || [] } };
+    cur.likes = likes;
+    dataRef.current = next; setData(next);
+    save({ [kCore(gender, profile)]: coreOf(cur) });
+  };
+
   const dismissSuggestion = (g, id, reason) => {
     const next = clone(dataRef.current);
     // Unisex candidates show on both gender tabs, so dismiss them on both.
@@ -5446,7 +5545,8 @@ function App() {
       {view === "rankings" && (unlocked
         ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onAddNick={addNick} onRemoveNick={removeNick} onReorder={reorderRank} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
-      {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} onAddNick={addNick} onRemoveNick={removeNick} />}
+      {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} onAddNick={addNick} onRemoveNick={removeNick}
+        onAddLike={addLike} onRemoveLike={removeLike} onTagLike={setLikeTags} />}
 
       {view === "vote" && (
         <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:T.meta, color:C.muted }}>
@@ -6683,8 +6783,96 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
     </div>
   );
 }
+/* ---- names you already love --------------------------------------------
+ * A private, per-voter taste signal. Names the tables know train at full
+ * strength; ones they don't get their ending and syllable count read off the
+ * spelling (see endOf/sylOf) plus whatever vibe tags you pick, which is the
+ * heaviest feature in the model and the one thing we can't infer.
+ * These never enter voting — that distinction is the thing to keep clear. */
+function LikedNames({ likes, gender, onAdd, onRemove, onTag }) {
+  const [val, setVal] = useState("");
+  const [tagging, setTagging] = useState(null); // id whose vibe we're asking about
+  const ids = Object.keys(likes || {});
+  const accent = gColor(gender);
+  const submit = () => {
+    const v = val.trim();
+    if (!v) return;
+    const id = onAdd(gender, v);
+    setVal("");
+    if (id && !FEAT[id]) setTagging(id);         // we don't know it — ask for a vibe
+  };
+  const pending = tagging && likes[tagging];
+  const pendingTags = (pending && pending.f && pending.f.s) || [];
+  const toggleTag = (t) => {
+    const has = pendingTags.includes(t);
+    const next = has ? pendingTags.filter((x) => x !== t)
+                     : [...pendingTags, t].slice(-2);   // two tags is plenty
+    onTag(gender, tagging, next);
+  };
+  return (
+    <div style={{ borderRadius:R.card, padding:S.md, marginBottom:S.lg, background:C.paper, border:`1px solid ${C.line}` }}>
+      <div style={{ ...LABEL, color:C.muted, marginBottom:S.sm }}>Names you already love</div>
+      <div style={{ display:"flex", gap:S.sm }}>
+        <input value={val} onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="Type a name you like…" aria-label="A name you already love"
+          style={{ flex:1, minWidth:0, padding:"8px 10px", borderRadius:R.card, background:C.bg,
+            border:`1px solid ${C.line}`, color:C.ink, fontSize:T.body }} />
+        <button onClick={submit} className="lift"
+          style={{ padding:"8px 16px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:accent, color:"#fff" }}>Add</button>
+      </div>
+      {ids.length > 0 && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:S.xs, marginTop:S.sm }}>
+          {ids.map((id) => {
+            const l = likes[id], derived = !!l.f;
+            return (
+              <span key={id} style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:R.card,
+                fontSize:T.meta, fontWeight:600, background:C.bg, color:C.ink,
+                border:`1px ${derived ? "dashed" : "solid"} ${C.line}` }}>
+                {derived
+                  ? <button onClick={() => setTagging(id)} className="lift" title="We don’t know this one — tap to set its vibe"
+                      style={{ background:"none", padding:0, fontSize:T.meta, fontWeight:600, color:C.ink }}>{l.n || id}</button>
+                  : (l.n || id)}
+                {derived && l.f.s && l.f.s.length > 0 && (
+                  <span style={{ fontSize:T.micro, color:C.muted }}>{l.f.s.map((t) => STYLE_LABEL[t]).filter(Boolean).join(", ")}</span>
+                )}
+                <button onClick={() => { setTagging((cur) => (cur === id ? null : cur)); onRemove(gender, id); }}
+                  className="lift" aria-label={`Remove ${l.n || id}`} title="Remove"
+                  style={{ display:"flex", background:"none", padding:0, color:C.clay }}><Ic n="x" s={10} c={C.clay} /></button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {pending && (
+        <div style={{ marginTop:S.sm, padding:S.sm, borderRadius:R.card, background:C.bg, border:`1px solid ${C.line}` }}>
+          <div style={{ fontSize:T.meta, color:C.ink, marginBottom:S.xs }}>
+            New one on us — what’s <b>{pending.n}</b> like? <span style={{ color:C.muted }}>(pick up to two, or skip)</span>
+          </div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:S.xs }}>
+            {Object.keys(STYLE_LABEL).map((t) => {
+              const on = pendingTags.includes(t);
+              return (
+                <button key={t} onClick={() => toggleTag(t)} className="lift"
+                  style={{ padding:"3px 10px", borderRadius:R.card, fontSize:T.meta, fontWeight:700,
+                    border:`1px solid ${on ? "transparent" : C.line}`,
+                    ...(on ? { background:accent, color:"#fff" } : { background:C.paper, color:C.muted }) }}>{STYLE_LABEL[t]}</button>
+              );
+            })}
+            <button onClick={() => setTagging(null)} className="lift"
+              style={{ padding:"3px 10px", borderRadius:R.card, fontSize:T.meta, fontWeight:700, color:C.sage, background:"none" }}>Done</button>
+          </div>
+        </div>
+      )}
+      <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.sm}px 0 0`, lineHeight:1.5 }}>
+        These teach your suggestions below — they don’t join voting. Use <b>+ Add name</b> up top for that.
+      </p>
+    </div>
+  );
+}
+
 /* ---------------------- "For you" suggestions ---------------------------- */
-function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore, onAddNick, onRemoveNick }) {
+function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore, onAddNick, onRemoveNick, onAddLike, onRemoveLike, onTagLike }) {
   const [g, setG] = useState(initialGender || "girl");
   const [lastAdded, setLastAdded] = useState(null);
   const [lastDismissed, setLastDismissed] = useState(null);
@@ -6804,6 +6992,9 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center", flexWrap:"wrap" }}>
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={(v) => { setG(v); setLastAdded(null); }} active={gColor} />
       </div>
+
+      <LikedNames likes={(data[g][profile] || {}).likes || {}} gender={g}
+        onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike} />
 
 
       <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>

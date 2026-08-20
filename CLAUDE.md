@@ -18,9 +18,14 @@ dist/index.html <- BUILD OUTPUT (generated; this is what deploys). Do not hand-e
 ## Build & deploy
 ```bash
 npm install            # first time only
+npm test               # 33 model checks (see test/model.mjs) — run before deploying
 npm run build          # writes dist/index.html (fully self-contained, offline)
 npm run deploy         # builds, then deploys dist/ to Cloudflare Pages
 ```
+`npm run deploy` only reaches PRODUCTION from `main`. Cloudflare Pages names the
+deployment after the current git branch, so deploying from a branch silently
+publishes a preview URL instead — the command still prints "Success". Check
+https://nameoff.pages.dev itself, not the command output.
 
 ### First-time Cloudflare setup (do once)
 1. Authenticate Wrangler — either:
@@ -54,7 +59,15 @@ command — or run `npm run build` as the build command.)
   If the Supabase keys ever rotate, update those two constants and rebuild.
 - **Profiles:** `claire` and `andrew`. **Genders:** `boy`, `girl`.
 - **Per-profile/per-gender state:** `ratings, matches, votes, vetoed[], starred[], history[]`
-  (Elo, START rating, K=32).
+  (Elo, START rating, K=32), plus `explore{}` (Tune-your-taste tallies),
+  `dismissed{}` (passed suggestions) and `likes{}` (see below). All private to
+  that voter. A missing key reads as empty, so old profiles keep loading.
+- **`likes{}` — "names you already love"** (Name ideas tab). A private taste
+  signal that trains the recommender and NEVER joins voting; "+ Add name" is the
+  one that puts a name in front of everyone. Shape:
+  `{ matilda: {n:"Matilda", t}, zephyr: {n:"Zephyr", t, f:{end,syl,s[],lean}} }`.
+  `f` appears only when `FEAT` has no row for the name — then `endOf`/`sylOf`
+  read what they can off the spelling and the person taps a vibe tag or two.
 - **Global (shared) state:** `removed[]` (names hidden for both), `notes{}` (shared;
   each person edits only their own note), `custom[]` (added names).
 - **Data maps in app.jsx:**
@@ -66,6 +79,11 @@ command — or run `npm run build` as the build command.)
   - `MEANING` — one-line origin/meaning per name.
   - `approxRank()` / `rankToPct()` — calibration between % of births and rank.
   - `tierOf()` — popularity tier labels/colors.
+  - `endOf()` / `sylOf()` — features for a name no table knows. **`endOf` is the
+    plain last letter.** That looks too naive but it was measured against all
+    2036 curated rows: last-letter 99.4%, last-letter-plus-digraphs 98.6%, and a
+    proper phonetic silent-e rule only 86.4%. Maeve→v and Cormac→k are real, and
+    they are 13 rows out of 2036. Don't "improve" this; cleverer measured worse.
 - **Views (tabs):** Vote, Name ideas, Rankings. (Trends was removed — its Elo-over-
   time chart wasn't decision-useful; its scatter became Rankings' "Compare" mode.)
 
