@@ -6235,7 +6235,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
                 style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 11px", borderRadius:R.pill, fontSize:T.meta, fontWeight:700,
                   border:`1px solid ${on ? "transparent" : C.line}`,
                   ...(on ? { background:pColor(v.key), color:"#fff" } : { background:C.paper, color:C.muted }) }}>
-                {v.name}<span style={{ opacity:0.65, fontWeight:600 }}>{voteCount(v.key)}</span>
+                {v.name}{isOwner(v.key) && <span style={{ opacity:0.65, fontWeight:600 }}>{voteCount(v.key)}</span>}
               </button>
             );
           })}
@@ -6383,6 +6383,9 @@ function MyRankColumn({ gender, title, data, profile, onReorder }) {
   );
 }
 function GenderRankColumn({ gender, title, mode, who, data, profile, readOnly, notes, onSetNote, onUnveto, onVeto, onClaim, onAddNick, onRemoveNick }) {
+  // Vetoed names are settled business — kept for reference and un-vetoing, but
+  // folded away so the live ranking isn't trailed by a list of the dead.
+  const [showVetoed, setShowVetoed] = useState(false);
   notes = notes || {};
   const names = namesFor(gender, data.custom, data.removed);
   const cR = data[gender].claire.ratings, aR = data[gender].andrew.ratings;
@@ -6512,9 +6515,12 @@ function GenderRankColumn({ gender, title, mode, who, data, profile, readOnly, n
       )}
       {dead.length > 0 && (
         <div style={{ marginTop:20 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:T.micro, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, color:C.clay }}>
-            <Ic n="ban" s={12} /> Vetoed
-          </div>
+          <button onClick={() => setShowVetoed((v) => !v)} className="lift"
+            aria-expanded={showVetoed} title={showVetoed ? "Hide vetoed names" : "Show vetoed names"}
+            style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, background:"none", ...LABEL, color:C.clay }}>
+            <Ic n="ban" s={12} /> Vetoed · {dead.length} {showVetoed ? "▾" : "▸"}
+          </button>
+          {showVetoed && (
           <ul style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {dead.map((r) => (
               <li key={r.n.id} style={{ borderRadius:12, padding:"8px 12px", display:"flex", alignItems:"center", gap:12, background:C.paper, border:`1px dashed ${C.line}`, opacity:0.85 }}>
@@ -6528,6 +6534,7 @@ function GenderRankColumn({ gender, title, mode, who, data, profile, readOnly, n
               </li>
             ))}
           </ul>
+          )}
         </div>
       )}
       </>)}
