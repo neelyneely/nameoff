@@ -6900,9 +6900,10 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
       )}
       {children && (
         <div style={{ marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
-          <div style={{ display:"flex", alignItems:"center", gap:S.sm, marginBottom:S.sm }}>
-            <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or pick the one you like better</span>
-            <span className="disp" style={{ ...LABEL, letterSpacing:"0.14em", color:gColor(tuneGender) }}>{gLabel(tuneGender)}</span>
+          <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:S.sm, flexWrap:"wrap" }}>
+            <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or pick the one you like better for a</span>
+            {/* LABEL already uppercases, so the word stays readable in the source */}
+            <span className="disp" style={{ ...LABEL, letterSpacing:"0.14em", color:gColor(tuneGender) }}>{tuneGender === "boy" ? "boy" : "girl"}</span>
           </div>
           {children}
         </div>
