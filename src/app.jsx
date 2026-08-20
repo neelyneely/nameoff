@@ -6780,13 +6780,16 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
     </div>
   );
 }
-/* ---- names you already love --------------------------------------------
- * A private, per-voter taste signal. Names the tables know train at full
- * strength; ones they don't get their ending and syllable count read off the
- * spelling (see endOf/sylOf) plus whatever vibe tags you pick, which is the
+/* ---- Tune your taste -----------------------------------------------------
+ * One box, because both halves do the same job: teach this voter's recommender.
+ * You either name something you already like, or pick between two names it
+ * offers. Splitting them across the page made them read as unrelated features.
+ * Typed names are a private, per-voter signal. Ones the tables know train at
+ * full strength; ones they don't get their ending and syllable count read off
+ * the spelling (see endOf/sylOf) plus whatever vibe tags you pick, which is the
  * heaviest feature in the model and the one thing we can't infer.
- * These never enter voting — that distinction is the thing to keep clear. */
-function LikedNames({ likes, gender, onAdd, onRemove, onTag }) {
+ * Nothing in this box enters voting — that distinction is worth keeping clear. */
+function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
   const [val, setVal] = useState("");
   const [tagging, setTagging] = useState(null); // id whose vibe we're asking about
   const ids = Object.keys(likes || {});
@@ -6808,7 +6811,11 @@ function LikedNames({ likes, gender, onAdd, onRemove, onTag }) {
   };
   return (
     <div style={{ borderRadius:R.card, padding:S.md, marginBottom:S.lg, background:C.paper, border:`1px solid ${C.line}` }}>
-      <div style={{ ...LABEL, color:C.muted, marginBottom:S.sm }}>Names you already love</div>
+      <div style={{ ...LABEL, color:C.ink }}>Tune your taste</div>
+      <p style={{ fontSize:T.meta, color:C.muted, margin:`${S.xs}px 0 ${S.sm}px` }}>
+        Two ways to teach the suggestions below what you go for.
+      </p>
+      <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.xs }}>Name one you already like</div>
       <div style={{ display:"flex", gap:S.sm }}>
         <input value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
@@ -6864,6 +6871,12 @@ function LikedNames({ likes, gender, onAdd, onRemove, onTag }) {
       <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.sm}px 0 0`, lineHeight:1.5 }}>
         These teach your suggestions below. Use the <b>+ Add name</b> button above to add a name to the voting candidates.
       </p>
+      {children && (
+        <div style={{ marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
+          <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Or pick between these two</div>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -6938,10 +6951,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // with two competing ways to vote. It's now one card INSIDE the list — same
   // feature, but the suggestions you can actually act on come first.
   const tuneCard = pair ? (
-        <div style={{ padding:"14px 14px 12px", borderRadius:R.card, background:gTint(g), border:`1px solid ${C.line}` }}>
-          <div style={{ marginBottom:S.sm }}>
-            <span style={{ ...LABEL, color:C.ink }}>Tune your taste</span>
-          </div>
+        <div>
           <div style={{ display:"flex", gap:10, alignItems:"stretch" }}>
             {pair.map((c, i) => {
               const f = FEAT[c.id];
@@ -6987,13 +6997,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={(v) => { setG(v); setLastAdded(null); }} active={gColor} />
       </div>
 
-      <LikedNames likes={(data[g][profile] || {}).likes || {}} gender={g}
-        onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike} />
+      <TuneBox likes={(data[g][profile] || {}).likes || {}} gender={g}
+        onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike}>{tuneCard}</TuneBox>
 
 
       <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
         {votes < 4 && tuned < 3
-          ? <>New names that match the <b>style</b> of your starting list. Vote, or pick a favourite in the <b>Tune your taste</b> card below, and these retune to <b>your</b> taste.</>
+          ? <>New names that match the <b>style</b> of your starting list. Use <b>Tune your taste</b> above, or just vote, and these retune to <b>your</b> taste.</>
           : <>Tuned to your votes, stars, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>Add</b> to drop one into voting.</>}
       </p>
 
@@ -7023,12 +7033,11 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
         <p style={{ fontSize:T.body, color:C.muted }}>You’ve added all the close matches — keep voting and check back.</p>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          {sugg.map((item, si) => {
+          {sugg.map((item) => {
             const c = item.c, f = item.f;
             const nick = (c.nicks && c.nicks.length) ? c.nicks[0] : null;
             return (
-              <React.Fragment key={c.id}>
-              <div style={{ display:"flex", alignItems:"center", gap:S.md, padding:"12px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>
+              <div key={c.id} style={{ display:"flex", alignItems:"center", gap:S.md, padding:"12px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
                     <span style={{ fontFamily:DISPLAY, fontSize:T.name + 3, color:C.ink }}>{c.name}</span>
@@ -7052,8 +7061,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                   </button>
                 </div>
               </div>
-              {si === 2 && tuneCard}
-              </React.Fragment>
             );
           })}
         </div>
