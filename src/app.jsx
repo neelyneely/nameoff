@@ -215,6 +215,7 @@ const VARIANTS = {
   sloane: { girl: { ids:["sloan"],  label:"Sloane/Sloan" } },
   sean:   { boy:  { ids:["shawn"],  label:"Sean/Shawn" } },
   callan: { boy:  { ids:["callen"], label:"Callan/Callen" } },
+  matilda:{ girl: { ids:["mathilda"], label:"Matilda/Mathilda" } },
 };
 // Short origin · meaning one-liners (keyed by name id).
 const MEANING = {
@@ -4474,6 +4475,10 @@ const LIKE_W = 2.0;
 // cold-start prior, so five typed names actually displace the generic seed taste.
 const LIKE_AS_VOTES = 2;
 
+// What one Tune-your-taste reaction does to the two names' tallies. Kept in one
+// place because the undo runs it backwards — two copies would drift apart.
+const EXPLORE_DELTAS = { a:[1.0, -0.6], b:[-0.6, 1.0], love:[1.5, 1.5], pass:[-1.5, -1.5] };
+
 // Score the candidate pool for one voter + gender. Returns [{c, sc, f}] desc.
 function suggestNames(data, profile, gender) {
   const pg = data[gender][profile];
@@ -5345,16 +5350,24 @@ function App() {
 
   // Record a "For you" mash-up reaction. kind: "a"|"b" (pick winner), "love"
   // (both up), "pass" (both down). Feeds the recommender; not the voting list.
-  const reactExplore = (g, ids, kind) => {
+  const reactExplore = (g, ids, kind) => applyExplore(g, ids, kind, 1);
+  // Undo the last tune. Runs the same deltas backwards and drops the tally
+  // entirely once its count returns to zero, so an undone tune leaves nothing
+  // behind for the model to read.
+  const undoExplore = (g, ids, kind) => applyExplore(g, ids, kind, -1);
+  const applyExplore = (g, ids, kind, sign) => {
+    const d = EXPLORE_DELTAS[kind];
+    if (!d) return;
     const next = clone(dataRef.current);
     const cur = next[g][profile];
     cur.explore = { ...(cur.explore || {}) };
-    const adj = (id, ds) => { const e = cur.explore[id] || { s:0, n:0 }; cur.explore[id] = { s: e.s + ds, n: e.n + 1 }; };
-    const [a, b] = ids;
-    if (kind === "a") { adj(a, 1.0); adj(b, -0.6); }
-    else if (kind === "b") { adj(b, 1.0); adj(a, -0.6); }
-    else if (kind === "love") { adj(a, 1.5); adj(b, 1.5); }
-    else if (kind === "pass") { adj(a, -1.5); adj(b, -1.5); }
+    const adj = (id, ds) => {
+      const e = cur.explore[id] || { s:0, n:0 };
+      const n = e.n + sign;
+      if (n <= 0) delete cur.explore[id];
+      else cur.explore[id] = { s: e.s + sign * ds, n };
+    };
+    adj(ids[0], d[0]); adj(ids[1], d[1]);
     dataRef.current = next; setData(next);
     save({ [kCore(g, profile)]: coreOf(cur) });
   };
@@ -5562,7 +5575,7 @@ function App() {
         ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onAddNick={addNick} onRemoveNick={removeNick} onReorder={reorderRank} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
       {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} onAddNick={addNick} onRemoveNick={removeNick}
-        onAddLike={addLike} onRemoveLike={removeLike} onTagLike={setLikeTags} />}
+        onAddLike={addLike} onRemoveLike={removeLike} onTagLike={setLikeTags} onUndoReact={undoExplore} />}
 
       {view === "vote" && (
         <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:T.meta, color:C.muted }}>
@@ -5867,7 +5880,12 @@ function funcPop(id, gender) {
     .concat(vids.map((v) => ({ label: capId(v), rank: rankOf(v, gender), pct: pctOf(v, gender) })));
   const funcPct = spell.reduce((s, c) => s + (c.pct || 0), 0) || null;
   const hasVar = vids.length > 0;
-  const funcRank = hasVar ? approxRank(funcPct, gender) : ownRank;
+  // Merging spellings needs a birth-share figure, and PCT doesn't carry every
+  // name. When none of the spellings has one we can't add them up, so fall back
+  // to this spelling's own rank instead of reporting the name as unranked —
+  // which is what linking Matilda/Mathilda used to do to Matilda's #365.
+  const merged = hasVar && funcPct != null;
+  const funcRank = merged ? approxRank(funcPct, gender) : ownRank;
   // The "nickname popularity" pills follow the nickname chips on the card: one that
   // was removed stops showing a figure, and one that was added gets a figure if the
   // SSA data knows it as a name in its own right.
@@ -5886,7 +5904,7 @@ function funcPop(id, gender) {
     listed.add(nk.toLowerCase());
     nicks.push({ label: nk, pct: pctOf(vid, gender), rank: rankOf(vid, gender), approx: false });
   });
-  return { series: displaySeries(id, gender), funcPct, funcRank, hasVar, spell, nicks, year: raw[raw.length - 1].year };
+  return { series: displaySeries(id, gender), funcPct, funcRank, hasVar, merged, spell, nicks, year: raw[raw.length - 1].year };
 }
 // Gender-neutral names: fold girls' + boys' popularity into ONE figure — the total
 // share of all babies given the name, regardless of sex. Cross-sex analogue of the
@@ -5923,11 +5941,11 @@ function PopLine({ id, gender, compact = false, noChart = false, meaningShown = 
   const fp = funcPop(id, gender);
   if (!fp) return null;
   let tier = tierOf(fp.funcRank);
-  let sparkSeries = fp.series, sparkGender = gender, sparkApprox = fp.hasVar;
+  let sparkSeries = fp.series, sparkGender = gender, sparkApprox = fp.merged;
   let main = popMode === "pct"
     ? (fmtPct(fp.funcPct) || (fp.funcRank == null ? "<0.01%" : "n/a"))
     : (fp.funcRank == null ? (compact ? "1000+" : "Outside top 1000")
-        : (fp.hasVar ? "≈#" : "US #") + fp.funcRank);
+        : (fp.merged ? "≈#" : "US #") + fp.funcRank);
   if (uni) {
     // Gender-neutral: combine both sexes into ONE figure — the total share of all
     // babies with the name — instead of separate ♀/♂ ranks. We care how many kids
@@ -5986,7 +6004,7 @@ function PopLine({ id, gender, compact = false, noChart = false, meaningShown = 
                 </div>
               ))}
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontWeight: 700, borderTop: `1px solid ${C.line}`, marginTop: 2, paddingTop: 2 }}>
-                <span>Combined</span><span>{popMode === "pct" ? fmtPct(fp.funcPct) : fmtRank(fp.funcRank, true, true)}</span>
+                <span>Combined</span><span>{popMode === "pct" ? fmtPct(fp.funcPct) : fmtRank(fp.funcRank, fp.merged, true)}</span>
               </div>
             </div>
           )}
@@ -6914,7 +6932,7 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
 }
 
 /* ---------------------- "For you" suggestions ---------------------------- */
-function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore, onAddNick, onRemoveNick, onAddLike, onRemoveLike, onTagLike }) {
+function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore, onAddNick, onRemoveNick, onAddLike, onRemoveLike, onTagLike, onUndoReact }) {
   const [g, setG] = useState(initialGender || "girl");
   const [lastAdded, setLastAdded] = useState(null);
   const [lastDismissed, setLastDismissed] = useState(null);
@@ -6928,23 +6946,38 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // filters the suggestions.
   const [tuneG, setTuneG] = useState(initialGender || "girl");
   const [tuneDone, setTuneDone] = useState(0);
+  const [lastTune, setLastTune] = useState(null); // the one tune you can take back
+  const restoreRef = useRef(null);                // pair to put back on an undo
   const votes = data[g][profile] ? (data[g][profile].votes || 0) : 0;
   const explore = (data[g][profile] || {}).explore || {};
   const dismissed = (data[g][profile] || {}).dismissed || {};
   const passedIds = Object.keys(dismissed);
   const tuned = Object.keys(explore).length;
+  const likeCount = Object.keys((data[g][profile] || {}).likes || {}).length;
   const sugg = suggestNames(data, profile, g).slice(0, 12);
 
   // (Re)pick a mash-up whenever the gender changes or a reaction advances the round.
   useEffect(() => {
+    if (restoreRef.current) { setPair(restoreRef.current); restoreRef.current = null; return; }
     setPair(pickExplorePair(data, profile, tuneG, suggestNames(data, profile, tuneG)));
   }, [tuneG, round, profile]); // eslint-disable-line
 
   const react = (kind) => {
-    if (pair) onReact(tuneG, [pair[0].id, pair[1].id], kind);
+    if (!pair) return;
+    onReact(tuneG, [pair[0].id, pair[1].id], kind);
+    setLastTune({ g: tuneG, ids: [pair[0].id, pair[1].id], kind, pair, tuneG, tuneDone });
     const done = tuneDone + 1;
     if (done >= BLOCK) { setTuneG((cur) => (cur === "girl" ? "boy" : "girl")); setTuneDone(0); }
     else setTuneDone(done);
+    setRound((r) => r + 1);
+  };
+  // Put the pair back exactly as it was and unwind its effect on the model.
+  const undoTune = () => {
+    if (!lastTune) return;
+    onUndoReact(lastTune.g, lastTune.ids, lastTune.kind);
+    restoreRef.current = lastTune.pair;
+    setTuneG(lastTune.tuneG); setTuneDone(lastTune.tuneDone);
+    setLastTune(null);
     setRound((r) => r + 1);
   };
   const add = (item) => {
@@ -6993,6 +7026,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
             <button onClick={() => react("pass")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color:C.clay }}>
               <Ic n="ban" s={13} c={C.clay} /> Hate both
             </button>
+            {lastTune && (
+              <button onClick={undoTune} className="lift" title="Take back that last one"
+                style={{ display:"flex", alignItems:"center", gap:4, fontSize:T.micro, fontWeight:700, padding:"6px 10px",
+                  borderRadius:R.card, background:"none", color:C.muted }}>
+                <Ic n="back" s={12} c={C.muted} /> Undo
+              </button>
+            )}
           </div>
         </div>
   ) : null;
@@ -7006,11 +7046,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       <div style={{ display:"flex", gap:8, margin:"0 0 10px", alignItems:"center", flexWrap:"wrap" }}>
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={(v) => { setG(v); setLastAdded(null); }} active={gColor} />
       </div>
-      <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
-        {votes < 4 && tuned < 3
-          ? <>New names that match the <b>style</b> of your starting list. Use <b>Tune your taste</b> above, or just vote, and these retune to <b>your</b> taste.</>
-          : <>Tuned to your votes, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}.</>}
-      </p>
+      {/* Silent until there's actually something of yours behind the list —
+          claiming it's personalised before you've taught it anything is a lie. */}
+      {(votes > 0 || tuned > 0 || likeCount > 0) && (
+        <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
+          Your personalized recommendations
+        </p>
+      )}
 
       {lastAdded && (
         <div style={{ marginBottom:14, padding:"10px 12px", borderRadius:10, background:gTint(g), border:`1px solid ${C.line}`, fontSize:T.body, color:C.ink }}>
