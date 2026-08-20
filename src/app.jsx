@@ -6331,6 +6331,14 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   // "Everyone" averages every voter equally by default; toggle people off to see
   // what a subset of the family thinks.
   const [who, setWho] = useState(null);            // null = everyone
+  const [showActivity, setShowActivity] = useState(false);
+  // Votes and tunes each person has actually done, so you can see who's pulling
+  // the average. Only you and Andrew see this — it read as a scoreboard when it
+  // sat on the chips where guests could see it.
+  const votesBy = (k) => ((data.boy[k] || {}).votes || 0) + ((data.girl[k] || {}).votes || 0);
+  // Each tune touches two names, so the tallies double-count the tap.
+  const tunesBy = (k) => Math.round(["boy", "girl"].reduce((t, g) =>
+    t + Object.values((data[g][k] || {}).explore || {}).reduce((u, e) => u + (e.n || 0), 0), 0) / 2);
   const whoSet = who || voters.map((p) => p.key);
   const toggleWho = (k) => setWho(() => {
     const cur = whoSet.includes(k) ? whoSet.filter((x) => x !== k) : [...whoSet, k];
@@ -6384,6 +6392,26 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
               </button>
             );
           })}
+        </div>
+      )}
+      {mode === "everyone" && voters.length > 0 && isOwner(profile) && (
+        <div style={{ marginBottom:S.md }}>
+          <button onClick={() => setShowActivity((v) => !v)} className="lift" aria-expanded={showActivity}
+            style={{ ...LABEL, color:C.muted, background:"none" }}>
+            Who’s done what {showActivity ? "▾" : "▸"}
+          </button>
+          {showActivity && (
+            <ul style={{ marginTop:S.sm, display:"flex", flexDirection:"column", gap:2 }}>
+              {[...voters].sort((a, b) => votesBy(b.key) - votesBy(a.key)).map((v) => (
+                <li key={v.key} style={{ display:"flex", alignItems:"baseline", gap:S.sm, fontSize:T.meta, color:C.muted }}>
+                  <span style={{ minWidth:96, fontWeight:700, color:pColor(v.key) }}>{v.name}</span>
+                  <span>{votesBy(v.key)} vote{votesBy(v.key) === 1 ? "" : "s"}</span>
+                  <span style={{ opacity:0.5 }}>·</span>
+                  <span>{tunesBy(v.key)} tune{tunesBy(v.key) === 1 ? "" : "s"}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {mode === "compare" ? (
