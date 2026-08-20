@@ -68,10 +68,45 @@ command — or run `npm run build` as the build command.)
   - `tierOf()` — popularity tier labels/colors.
 - **Views (tabs):** Vote, Rankings, Trends, All.
 
+## Design system — use the tokens, never a literal
+Defined at the top of app.jsx next to the `C` palette, mirrored as CSS custom
+properties in head.html. These exist because the file had drifted to 22 font sizes,
+11 radii and ~40 padding combos, which is what made the app read busy.
+- `T` — type scale, six steps: `display` 44 (the matchup name), `title` 26 (screen
+  and column headings), `name` 17 (a name in a list), `body` 14, `meta` 12,
+  `micro` 11 (uppercase tracked labels only). **Nothing renders below 11px.**
+- `S` — spacing on a 4px base: `xs` 4, `sm` 8, `md` 12, `lg` 20, `xl` 32.
+- `R` — three radii: `block` 0 (flat color fields), `card` 10 (containers),
+  `pill` 999 — reserved for the person chip and nickname chips ONLY. Everything
+  else is square-shouldered; that's what keeps it mid-century rather than generic.
+- `LABEL` — the uppercase micro-label style (the one place letterspacing is used).
+
+## Vocabulary — two words for "no", and they mean different things
+- **Veto** — removes the name for BOTH of you. The couple's power.
+- **Pass** — removes it for you only (guests, and dismissing a suggestion).
+A control keeps its name through the whole flow: the button that says Pass
+produces a toast that says Passed. Don't reintroduce "hard pass", "not for me",
+"hate both" or "take mine back".
+
 ## Style/UX conventions already in place
 - MCM warm palette in the `C` object (app.jsx); Futura-ish display font.
-- Vote cards are equal height, content vertically centered, and **stack vertically
-  on phones** (≤560px media query in head.html).
-- The "i" info button only shows what the card doesn't already display (spelling-variant
-  breakdown on the vote card; fuller breakdown in compact list views).
+- **The matchup is where the app raises its voice** — two flat, saturated color
+  fields and the names at `T.display`. Everything else on that screen stays quiet.
+  Only the name, pronunciation, nicknames and a one-line popularity figure live on
+  the card; meaning, the trend chart, nickname figures and the spelling breakdown
+  are all behind the "i". Keep it that way — the card fits two names on a phone
+  screen only because it carries four rows, and that's the whole point of it.
+- Vote cards are equal height (flex `align-items:stretch`) with content vertically
+  centered, and **stack vertically on phones** (≤560px media query in head.html).
+  They are NOT built from fixed-height slots any more; don't add minHeights back.
+- The "i" info button only shows what the card doesn't already display.
 - Keep the existing code style and formatting; don't reformat the whole file.
+
+## Regression check after UI work
+Build, then serve a **local-only** copy (blank `DEFAULT_URL` in a copy of
+dist/index.html so click-testing can't write to the shared Supabase), and measure
+the matchup at a 390px width — both cards must fit above ~650px:
+```js
+const c=[...document.querySelectorAll('.cards > div')];
+Math.round(c[c.length-1].getBoundingClientRect().bottom + scrollY)  // want <= 650
+```

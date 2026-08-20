@@ -9,11 +9,43 @@ const C = {
   claire:"#C9821A", andrew:"#3F6CA3",
   // Per-gender identity + soft background tints for the Vote banner / Rankings.
   girl:"#B5677B", boy:"#5B7493", girlTint:"#EFE0E2", boyTint:"#DFE6EC",
-  // Stronger pink/blue fills for the Vote cards so the round is obvious at a glance.
-  girlCard:"#EFD0D8", boyCard:"#CFDDEA",
+  // The Vote cards are the one place the app raises its voice: flat, saturated
+  // fields of color rather than pastel tints, mid-century-poster style. Ink stays
+  // the text color on both — checked for contrast — so nothing needs to go white.
+  girlCard:"#E4B3C0", boyCard:"#AFC6DB",
 };
-// Color for a profile's own data (Claire = orangey-yellow, Andrew = sage green).
-const pColor = (p) => (p === "claire" ? C.claire : p === "andrew" ? C.andrew : C.teal);
+/* The design system. Before these existed the file carried 22 distinct font sizes,
+   11 border radii and ~40 padding combos, which is why the app read busy: nothing
+   in it agreed with anything else. Use a token, never a literal.
+   T = type scale (nothing smaller than 11px, so it stays readable on a phone).
+   S = spacing, on a 4px base.  R = radius. */
+const T = { display:44, title:26, name:17, body:14, meta:12, micro:11 };
+const S = { xs:4, sm:8, md:12, lg:20, xl:32 };
+// Three radii, not eleven. `block` (0) is for the flat mid-century color fields,
+// `card` for containers, `pill` ONLY for things that are genuinely lozenge-shaped:
+// the person chip and nickname chips. Everything else is square-shouldered.
+const R = { block:0, card:10, pill:999 };
+// Uppercase micro-label: the one place letterspacing is used, so it reads as a
+// label rather than shouting.
+const LABEL = { fontSize:T.micro, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" };
+
+// Every voter gets their own color, not just the two of us. Guests draw from this
+// palette — all MCM-warm, all readable on the paper background, and all distinct
+// from Claire's ochre and Andrew's blue.
+const GUEST_COLORS = ["#7A5BA6","#2E4756","#566B36","#A4663A","#B5677B","#3E8079","#C25E5E","#8A6D2F","#4F6D9E","#6B8E4E","#A34F7A","#2F7D8C"];
+// Handed out by roster position (refreshed in assemble) rather than by hashing the
+// name, because a hash collides long before the palette runs out and two voters
+// showing up in the same color is the whole thing we're fixing. Someone not on the
+// roster — a deleted profile still named in old history — falls back to a hash.
+let GUEST_COLOR = {};
+const guestColor = (p) => {
+  if (GUEST_COLOR[p]) return GUEST_COLOR[p];
+  let h = 7;
+  for (let i = 0; i < p.length; i++) h = (h * 33 + p.charCodeAt(i)) >>> 0;
+  return GUEST_COLORS[h % GUEST_COLORS.length];
+};
+// Color for a profile's own data (Claire = ochre, Andrew = blue, everyone else = theirs).
+const pColor = (p) => (p === "claire" ? C.claire : p === "andrew" ? C.andrew : guestColor(p || ""));
 // Per-gender helpers: accent color, soft background tint, and banner label.
 const gColor = (g) => (g === "boy" ? C.boy : C.girl);
 const gTint = (g) => (g === "boy" ? C.boyTint : C.girlTint);
@@ -38,6 +70,7 @@ function Ic({ n, s = 16, c = "currentColor", fill = "none" }) {
     check:"M20 6 9 17l-5-5", plus:"M12 5v14M5 12h14", x:"M18 6 6 18M6 6l12 12",
     list:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
     reset:"M3 12a9 9 0 1 0 3-6.7L3 8M3 4v4h4",
+    pencil:"M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3zM14.5 6.5l3 3",
     back:"M19 12H5M12 19l-7-7 7-7",
     heart:"M12 21C12 21 3.5 14.5 3.5 8.8 3.5 5.9 5.6 4 8 4c1.7 0 3.2 1 4 2.5C12.8 5 14.3 4 16 4c2.4 0 4.5 1.9 4.5 4.8C20.5 14.5 12 21 12 21z",
     trophy:"M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4ZM5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3",
@@ -4406,10 +4439,12 @@ const PRIOR = { "s:sur":1.2, "s:lyr":1.0, "s:nat":0.4, "s:vin":0.3, "tier:uncomm
 function suggestNames(data, profile, gender) {
   const pg = data[gender][profile];
   const roster = namesFor(gender, data.custom, data.removed);
-  const present = new Set(roster.map((x) => x.id));
+  // Match on the id AND the displayed spelling's slug, so a renamed roster name
+  // (Shae → Shea) doesn't come back as a "new" suggestion under its own entry.
+  const present = new Set(roster.flatMap((x) => [x.id, slug(x.name)]));
   const removed = new Set(data.removed || []);
   const explore = pg.explore || {};
-  // Names the voter said "Not for me" — hidden, but NOT trained on (the dislike
+  // Names the voter passed on — hidden, but NOT trained on (the dislike
   // is usually about the specific name, not its style; see Quinn).
   const dismissed = pg.dismissed || {};
   // Signed, confidence-scaled signal from the mash-up "explore" tallies.
@@ -4547,6 +4582,9 @@ function tierOf(rank) {
   return { label:"Uncommon", color:C.teal };
 }
 const PopModeCtx = React.createContext("rank");
+// Name-editing handles, passed by context rather than threaded through the six
+// layers of list components that render a name. { onRename, onRenameNick, canEdit }.
+const EditCtx = React.createContext(null);
 function popSeries(id, gender) {
   const m = POP[id] && POP[id][gender];
   if (!m) return null;
@@ -4622,6 +4660,50 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "name";
 const uniqueId = (base, taken) => { let id = base, k = 2; while (taken.has(id)) { id = base + "-" + k; k++; } return id; };
 
+// Spelling overrides (id -> display name). Renaming a name is DISPLAY-ONLY: the id
+// — and every vote, veto, star, nickname and note tied to it — stays exactly where
+// it is, so fixing a spelling never costs anyone their history. Shared by everyone
+// (like `removed`), held at module scope and refreshed from data in assemble().
+// DEFAULT_SPELLINGS ship with the app; a saved override for the same id wins.
+const DEFAULT_SPELLINGS = { shae: "Shea" };
+let SPELLINGS = {};
+// The spelling the "revert" button goes back to.
+const shippedName = (id, custom) => {
+  if (DEFAULT_SPELLINGS[id]) return DEFAULT_SPELLINGS[id];
+  const b = [...NAMES.boy, ...NAMES.girl].find((n) => n.id === id);
+  if (b) return b.name;
+  const c = (custom || []).find((x) => x.id === id);
+  return c ? c.name : id;
+};
+const dispName = (id, fallback) => SPELLINGS[id] || fallback;
+// If the NEW spelling is itself a name the data tables know (Shea has its own SSA
+// ranks, meaning and feature vector), point this id's lookups at that data so
+// popularity and meaning follow the spelling. POP merges per gender, so a sex the
+// new spelling has no row for keeps the old one's (usually "outside the top 1000")
+// and the card still renders. Originals are snapshotted so a rename can be undone.
+const SPELL_TABLES = [["pop", () => POP], ["meaning", () => MEANING], ["feat", () => FEAT], ["combine", () => COMBINE], ["variants", () => VARIANTS]];
+const SPELL_ORIG = {};
+function applySpellings(saved) {
+  SPELLINGS = { ...DEFAULT_SPELLINGS, ...(saved || {}) };
+  new Set([...Object.keys(SPELL_ORIG), ...Object.keys(SPELLINGS)]).forEach((id) => {
+    if (!SPELL_ORIG[id]) {
+      const snap = {}; SPELL_TABLES.forEach(([k, t]) => { snap[k] = t()[id]; }); SPELL_ORIG[id] = snap;
+    }
+    const src = SPELLINGS[id] ? slug(SPELLINGS[id]) : id;
+    const alias = src !== id && (POP[src] || MEANING[src]);
+    SPELL_TABLES.forEach(([k, t]) => {
+      const tbl = t(), orig = SPELL_ORIG[id][k];
+      let v = alias ? tbl[src] : orig;
+      if (alias && k === "pop") v = { ...(orig || {}), ...(tbl[src] || {}) };
+      // Whether a name is unisex here, and whether it has nicknames, belong to the
+      // roster entry — not to the spelling — so those two features stay put.
+      if (alias && k === "feat" && orig && tbl[src]) v = { ...tbl[src], lean: orig.lean, nk: orig.nk };
+      if (v === undefined) delete tbl[id]; else tbl[id] = v;
+    });
+  });
+}
+applySpellings({});
+
 // User-added nicknames (id -> [nick]). A shared overlay merged onto every name's
 // base nicks, so anyone can nickname any name regardless of who added it. Held at
 // module scope (like POP/MEANING) and refreshed from data in assemble().
@@ -4630,13 +4712,31 @@ let ADDED_NICKS = {};
 // different nicks for each gender. A plain-id key is legacy (gender-agnostic) and is
 // merged into both genders for back-compat.
 const addedNicksFor = (addnicks, gender, id) => [...((addnicks || {})[gender + ":" + id] || []), ...((addnicks || {})[id] || [])];
+// Nicknames taken back off a name. The shipped tables (NAMES/CANDS) and a custom
+// name's own nicks can't be edited in place, so a removal is recorded here as an
+// overlay — same shape and keying as ADDED_NICKS, shared by everyone like `removed`.
+// That's what makes EVERY nickname editable, not just the ones someone added.
+let HIDDEN_NICKS = {};
+const hiddenNicksFor = (hidenicks, gender, id) => [...((hidenicks || {})[gender + ":" + id] || []), ...((hidenicks || {})[id] || [])];
+// The nicknames a name ships with, before either overlay. Roster names live in
+// NAMES, suggestions in CANDS, everything else is a name someone added.
+const CAND_NICKS = {};
+CANDS.forEach((c) => { CAND_NICKS[c.id] = c.nicks || []; });
+const baseNicksOf = (gender, id, custom) => {
+  const b = NAMES[gender].find((n) => n.id === id);
+  if (b) return b.nicks || [];
+  const c = (custom || []).find((x) => x.id === id);
+  if (c) return c.nicks || [];
+  return CAND_NICKS[id] || [];
+};
 const mergeNicks = (n, gender) => {
   const add = addedNicksFor(ADDED_NICKS, gender, n.id);
-  if (!add.length) return n;
+  const hide = new Set(hiddenNicksFor(HIDDEN_NICKS, gender, n.id).map((x) => x.toLowerCase()));
+  if (!add.length && !hide.size) return n;
   const seen = new Set((n.nicks || []).map((x) => x.toLowerCase()));
   const nicks = [...(n.nicks || [])];
   add.forEach((nk) => { const k = nk.toLowerCase(); if (!seen.has(k)) { seen.add(k); nicks.push(nk); } });
-  return { ...n, nicks };
+  return { ...n, nicks: hide.size ? nicks.filter((nk) => !hide.has(nk.toLowerCase())) : nicks };
 };
 function namesFor(gender, custom, removed) {
   const baseNames = new Set(NAMES[gender].map((n) => n.name.toLowerCase()));
@@ -4644,7 +4744,9 @@ function namesFor(gender, custom, removed) {
     .filter((c) => (c.gender === gender || c.gender === "both") && !baseNames.has(c.name.toLowerCase()))
     .map((c) => ({ id: c.id, name: c.name, nicks: c.nicks || [], unisex: c.gender === "both", custom: true, by: c.by, byName: c.byName }));
   const rm = new Set(removed || []);
-  return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id)).map((n) => mergeNicks(n, gender));
+  return [...NAMES[gender], ...extra].filter((n) => !rm.has(n.id))
+    .map((n) => mergeNicks(n, gender))
+    .map((n) => (SPELLINGS[n.id] && SPELLINGS[n.id] !== n.name ? { ...n, name: SPELLINGS[n.id] } : n));
 }
 const findName = (names, id) => names.find((n) => n.id === id) || { id, name: id, nicks: [] };
 const coreOf = (pg) => ({ ratings: pg.ratings, matches: pg.matches, votes: pg.votes, vetoed: pg.vetoed, starred: pg.starred, explore: pg.explore || {}, dismissed: pg.dismissed || {} });
@@ -4709,6 +4811,16 @@ function assemble(map) {
   const notes = (map.notes && typeof map.notes === "object") ? map.notes : {};
   const addnicks = (map.addnicks && typeof map.addnicks === "object") ? map.addnicks : {};
   ADDED_NICKS = addnicks; // refresh the module-scope overlay used by namesFor()
+  const hidenicks = (map.hidenicks && typeof map.hidenicks === "object") ? map.hidenicks : {};
+  HIDDEN_NICKS = hidenicks;
+  const spellings = {};
+  if (map.spellings && typeof map.spellings === "object") {
+    Object.keys(map.spellings).forEach((id) => {
+      const v = map.spellings[id];
+      if (typeof v === "string" && v.trim()) spellings[id] = v.trim();
+    });
+  }
+  applySpellings(spellings); // display names + the data they point at
   // Roster of voters: the two owners are always present; guests come from the
   // saved "profiles" list (everyone is identified by their first name).
   const saved = Array.isArray(map.profiles) ? map.profiles : [];
@@ -4716,7 +4828,10 @@ function assemble(map) {
   OWNERS.forEach((k) => { roster.push({ key: k, name: OWNER_NAMES[k] }); seen.add(k); });
   saved.forEach((p) => { if (p && p.key && p.name && !seen.has(p.key)) { roster.push({ key: p.key, name: p.name }); seen.add(p.key); } });
   const profiles = {}; roster.forEach((p) => { profiles[p.key] = p.name; });
-  const data = { custom, removed, notes, addnicks, roster, profiles, boy: {}, girl: {} };
+  // One color per guest, by roster position, so no two voters ever look alike.
+  GUEST_COLOR = {};
+  roster.filter((p) => !isOwner(p.key)).forEach((p, i) => { GUEST_COLOR[p.key] = GUEST_COLORS[i % GUEST_COLORS.length]; });
+  const data = { custom, removed, notes, addnicks, hidenicks, spellings, roster, profiles, boy: {}, girl: {} };
   ["boy", "girl"].forEach((g) => roster.forEach(({ key: p }) => {
     const core = map[kCore(g, p)] || {};
     const hist = map[kHist(g, p)];
@@ -4758,7 +4873,7 @@ function pickPair(names, pg, last) {
   }
   return Math.random() < 0.5 ? [A.id, B.id] : [B.id, A.id];
 }
-// Pick one fresh opponent for a name we're keeping (used when one card is hard-passed):
+// Pick one fresh opponent for a name we're keeping (used when one card is passed on):
 // favor fewer prior matchups, then a rating near the kept name's.
 function pickPartner(names, pg, keepId) {
   const pool = names.filter((n) => n.id !== keepId);
@@ -4827,9 +4942,9 @@ function Toast({ data, onClose }) {
   if (!data) return null;
   return (
     <div style={{ position:"fixed", left:0, right:0, bottom:18, display:"flex", justifyContent:"center", zIndex:55, pointerEvents:"none", padding:"0 12px" }}>
-      <div style={{ pointerEvents:"auto", display:"flex", alignItems:"center", gap:16, maxWidth:420, background:C.ink, color:C.paper, padding:"10px 16px", borderRadius:999, boxShadow:"0 8px 28px rgba(0,0,0,.28)", fontSize:13 }}>
+      <div style={{ pointerEvents:"auto", display:"flex", alignItems:"center", gap:16, maxWidth:420, background:C.ink, color:C.paper, padding:"10px 16px", borderRadius:R.card, boxShadow:"0 8px 28px rgba(0,0,0,.28)", fontSize:T.body }}>
         <span>{data.msg}</span>
-        {data.onUndo && <button onClick={() => { data.onUndo(); onClose(); }} className="lift" style={{ fontWeight:800, color:C.ochre, fontSize:13, textTransform:"uppercase", letterSpacing:"0.04em" }}>Undo</button>}
+        {data.onUndo && <button onClick={() => { data.onUndo(); onClose(); }} className="lift" style={{ fontWeight:800, color:C.ochre, fontSize:T.body, textTransform:"uppercase", letterSpacing:"0.04em" }}>Undo</button>}
       </div>
     </div>
   );
@@ -4973,6 +5088,7 @@ function App() {
       else { setBlockCount(completed); setPair(pickPair(poolFor(next, ng), next[ng][profile], pair)); }
       setPicked(null);
       votingRef.current = false;
+      showToast(`Picked ${findName(namesFor(g, next.custom), winId).name}`, goBack);
       // Little milestone celebrations: the 10-vote unlock, then every 25.
       const total = (next.boy[profile].votes || 0) + (next.girl[profile].votes || 0);
       if (total === UNLOCK_VOTES) celebrateNow({ title: "Rankings unlocked!", emoji: "🎉", note: `${total} votes in — Rankings & Trends are open.` });
@@ -5052,7 +5168,7 @@ function App() {
     dataRef.current = next; setData(next); setPicked(null);
     save({ [kCore(g, profile)]: coreOf(next[g][profile]) });
     const pool = poolFor(next, g);
-    const survivor = pair && pair.find((x) => x !== id);  // keep the other card; swap only the hard-passed one
+    const survivor = pair && pair.find((x) => x !== id);  // keep the other card; swap only the passed one
     if (survivor && pool.some((nn) => nn.id === survivor)) {
       const opp = pickPartner(pool, next[g][profile], survivor);
       if (opp) { const sIdx = pair.indexOf(survivor); const np = [...pair]; np[1 - sIdx] = opp; setPair(np); }
@@ -5061,7 +5177,7 @@ function App() {
     else if (votable(next, g)) { setPair(pickPair(pool, next[g][profile], null)); }
     else if (votable(next, otherG(g))) { setVoteGender(otherG(g)); setBlockCount(0); }
     else { setPair(null); }
-    showToast(`${isOwner(profile) ? "Vetoed" : "Hard-passed"} ${nm}`, () => unveto(g, profile, id));
+    showToast(`${isOwner(profile) ? "Vetoed" : "Passed on"} ${nm}`, () => unveto(g, profile, id));
   };
   const unveto = (g, profileKey, id) => {
     const next = clone(dataRef.current);
@@ -5083,7 +5199,7 @@ function App() {
     const next = clone(dataRef.current);
     const dupe = (next.custom || []).some((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase() && c.gender === g);
     const baseDupe = (g === "both" ? ["boy", "girl"] : [g]).some((gg) =>
-      NAMES[gg].some((n) => n.name.toLowerCase() === name.trim().toLowerCase()));
+      namesFor(gg, [], []).some((n) => n.name.toLowerCase() === name.trim().toLowerCase())); // display spellings included
     if (dupe || baseDupe) return;
     const taken = new Set([...NAMES.boy, ...NAMES.girl].map((n) => n.id).concat((next.custom || []).map((c) => c.id)));
     const id = uniqueId(slug(name), taken);
@@ -5109,33 +5225,76 @@ function App() {
     save({ custom: next.custom });
     if (pair && pair.includes(id)) setPair(pickPair(poolFor(next, voteGender), next[voteGender][profile], null));
   };
-  // Anyone can nickname any name (built-in or added), regardless of who added it.
-  const addNick = (gender, id, raw) => {
-    const nick = (raw || "").trim();
-    if (!nick) return;
-    const key = gender + ":" + id;
+  // Fix a name's spelling (shared, like a removal). Display-only: the id stays put,
+  // so every vote, veto, star, nickname and note on that name survives the rename.
+  // Passing an empty string — or the shipped spelling — clears the override.
+  const renameName = (id, raw) => {
+    const name = (raw || "").trim().replace(/\s+/g, " ");
     const next = clone(dataRef.current);
-    const an = { ...(next.addnicks || {}) };
-    const cur = an[key] ? [...an[key]] : [];
-    // Reject a nick already shown for this name+gender (added OR built-in) so it can't make a dead remove-✕ chip.
-    const tgt = namesFor(gender, next.custom, next.removed).find((n) => n.id === id);
-    const existing = new Set([...cur, ...((tgt && tgt.nicks) || [])].map((x) => x.toLowerCase()));
-    if (existing.has(nick.toLowerCase())) return;
-    an[key] = [...cur, nick];
-    next.addnicks = an; ADDED_NICKS = an;
+    const sp = { ...(next.spellings || {}) };
+    const was = sp[id];
+    const base = shippedName(id, next.custom);
+    if (name && name.toLowerCase() !== base.toLowerCase()) {
+      // Don't let two names on the roster end up spelled identically.
+      const clash = ["boy", "girl"].some((g) =>
+        namesFor(g, next.custom, next.removed).some((n) => n.id !== id && n.name.toLowerCase() === name.toLowerCase()));
+      if (clash) { showToast(`${name} is already on the list`); return; }
+      sp[id] = name;
+    } else delete sp[id];
+    next.spellings = sp;
+    applySpellings(sp);
     dataRef.current = next; setData(next);
-    save({ addnicks: an });
+    save({ spellings: sp });
+    const now = sp[id] || base;
+    showToast(`Now spelled ${now}`, () => renameName(id, was || base));
   };
-  const removeNick = (gender, id, nick) => {
+
+  // Every nickname on the site is editable, not just the ones someone added: anyone
+  // can add one, and the two of you can retype or remove ANY of them, the shipped
+  // ones included. A shipped nick can't be deleted from the tables, so removing it
+  // is recorded in `hidenicks` and a rename is a hide plus an add. All three edits
+  // land here so the two overlays always move together in a single save.
+  const editNicks = (gender, id, drop, add) => {
+    const key = gender + ":" + id;
+    const low = (x) => (x || "").trim().toLowerCase();
     const next = clone(dataRef.current);
     const an = { ...(next.addnicks || {}) };
-    // remove from the gender-specific bucket and the legacy gender-agnostic one
-    [gender + ":" + id, id].forEach((k) => {
-      if (an[k]) { an[k] = an[k].filter((x) => x.toLowerCase() !== nick.toLowerCase()); if (!an[k].length) delete an[k]; }
-    });
+    const hn = { ...(next.hidenicks || {}) };
+    const base = baseNicksOf(gender, id, next.custom);
+    // Pull a nick out of one bucket (the gender-specific key or the legacy plain-id
+    // one); reports whether it was actually in there.
+    const pull = (m, k, v) => {
+      if (!m[k]) return false;
+      const keep = m[k].filter((x) => low(x) !== low(v));
+      if (keep.length === m[k].length) return false;
+      if (keep.length) m[k] = keep; else delete m[k];
+      return true;
+    };
+    if (drop) {
+      const wasAdded = [key, id].map((k) => pull(an, k, drop)).some(Boolean);
+      if (!wasAdded && base.some((x) => low(x) === low(drop))) hn[key] = [...(hn[key] || []), drop.trim()];
+    }
+    if (add) {
+      [key, id].forEach((k) => pull(hn, k, add)); // re-adding a hidden shipped nick un-hides it
+      // Don't duplicate something already on the name (added OR shipped).
+      const shown = new Set([...(an[key] || []), ...(an[id] || []), ...base].map(low));
+      if (!shown.has(low(add))) an[key] = [...(an[key] || []), add.trim()];
+    }
     next.addnicks = an; ADDED_NICKS = an;
+    next.hidenicks = hn; HIDDEN_NICKS = hn;
     dataRef.current = next; setData(next);
-    save({ addnicks: an });
+    save({ addnicks: an, hidenicks: hn });
+  };
+  const addNick = (gender, id, raw) => { const v = (raw || "").trim(); if (v) editNicks(gender, id, "", v); };
+  const removeNick = (gender, id, nick) => {
+    editNicks(gender, id, nick, "");
+    showToast(`Removed “${nick}”`, () => editNicks(gender, id, "", nick));
+  };
+  const renameNick = (gender, id, oldNick, raw) => {
+    const v = (raw || "").trim();
+    if (!v || v === oldNick) return;
+    editNicks(gender, id, oldNick, v);
+    showToast(`${oldNick} → ${v}`, () => editNicks(gender, id, v, oldNick));
   };
 
   // Record a "For you" mash-up reaction. kind: "a"|"b" (pick winner), "love"
@@ -5153,7 +5312,7 @@ function App() {
     dataRef.current = next; setData(next);
     save({ [kCore(g, profile)]: coreOf(cur) });
   };
-  // "Not for me" on a For-you suggestion: hide the name (does NOT train the
+  // Passing on a suggestion: hide the name (does NOT train the
   // style model). reason is optional free text the voter can add later.
   const dismissSuggestion = (g, id, reason) => {
     const next = clone(dataRef.current);
@@ -5261,24 +5420,29 @@ function App() {
     if (profile === key) switchMe();
   };
 
-  if (!data) return <div className="boot" style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:14 }}>Loading your names…</div>;
+  if (!data) return <div className="boot" style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:T.body }}>Loading your names…</div>;
   if (!known) return <WhoPanel roster={data.roster} onChoose={chooseMe} onDelete={deleteProfile} />;
 
+  // Renaming a name or editing a shipped nickname changes the list for EVERYONE,
+  // so it stays with the two of you; guests can still add nicknames and suggest names.
+  const editHandles = { onRename: renameName, onRenameNick: renameNick, canEdit: isOwner(profile) };
+
   return (
+    <EditCtx.Provider value={editHandles}>
     <PopModeCtx.Provider value={popMode}>
     <Celebrate data={celebrate} onClose={() => setCelebrate(null)} />
     <Toast data={toast} onClose={() => setToast(null)} />
     {showLog && <VoteLog data={data} onDelete={deleteVote} onClose={() => setShowLog(false)} />}
     <div className="wrap">
       <Header me={data.profiles[profile]} myColor={pColor(profile)} onSwitch={switchMe}
-        showAdd={showAdd} setShowAdd={setShowAdd} onOpenLog={() => setShowLog(true)}
-        popMode={popMode} setPopMode={changePopMode} />
-      {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom} />}
+        showAdd={showAdd} setShowAdd={setShowAdd} />
+      {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom} data={data} onRename={renameName} canEdit={isOwner(profile)}
+        popMode={popMode} setPopMode={changePopMode} onOpenLog={() => { setShowAdd(false); setShowLog(true); }} />}
       <Tabs view={view} setView={setView} />
 
       {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
         onBack={goBack} canGoBack={canGoBack} profile={profile}
-        addnicks={data.addnicks} onAddNick={addNick} onRemoveNick={removeNick} />}
+        onAddNick={addNick} onRemoveNick={removeNick} />}
       {view === "rankings" && (unlocked
         ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onAddNick={addNick} onRemoveNick={removeNick} onReorder={reorderRank} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
@@ -5288,7 +5452,7 @@ function App() {
         : <LockMsg myVotes={myVotes} />)}
 
       {view === "vote" && (
-        <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:12, color:C.muted }}>
+        <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:T.meta, color:C.muted }}>
           <span>Voting as <b style={{ color:pColor(profile) }}>{PROFILES[profile]}</b> · {voteGender === "boy" ? "boys" : "girls"}</span>
           {confirmReset ? (
             <span style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -5305,6 +5469,7 @@ function App() {
       )}
     </div>
     </PopModeCtx.Provider>
+    </EditCtx.Provider>
   );
 }
 
@@ -5320,10 +5485,10 @@ function VoteLog({ data, onDelete, onClose }) {
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"24px 12px", overflowY:"auto", zIndex:60 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width:"100%", maxWidth:560, background:C.bg, border:`1px solid ${C.line}`, borderRadius:18, padding:"20px 18px", margin:"auto" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-          <span className="disp" style={{ fontSize:20, fontWeight:800 }}>Vote log</span>
+          <span className="disp" style={{ fontSize:T.title, fontWeight:800 }}>Vote log</span>
           <button onClick={onClose} className="lift" aria-label="Close" style={{ display:"flex", padding:4, color:C.muted }}><Ic n="x" s={18} /></button>
         </div>
-        <p style={{ fontSize:12.5, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
+        <p style={{ fontSize:T.meta, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
           Every vote each person has cast, newest first. Spot one that was really you by mistake and tap <Ic n="x" s={11} c={C.clay} /> to remove just that vote — the rankings recompute automatically.
         </p>
         {roster.map((p) => {
@@ -5335,11 +5500,11 @@ function VoteLog({ data, onDelete, onClose }) {
             <div key={p.key} style={{ marginBottom:18 }}>
               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
                 <span style={{ width:10, height:10, borderRadius:999, background:pColor(p.key) }} />
-                <span style={{ fontSize:15, fontWeight:700, color:C.ink }}>{data.profiles[p.key] || p.name}</span>
-                <span style={{ fontSize:12, color:C.muted }}>{rows.length} vote{rows.length === 1 ? "" : "s"}</span>
+                <span style={{ fontSize:T.name, fontWeight:700, color:C.ink }}>{data.profiles[p.key] || p.name}</span>
+                <span style={{ fontSize:T.meta, color:C.muted }}>{rows.length} vote{rows.length === 1 ? "" : "s"}</span>
               </div>
               {rows.length === 0 ? (
-                <div style={{ fontSize:12.5, color:C.muted, fontStyle:"italic", padding:"2px 2px 4px" }}>No votes yet.</div>
+                <div style={{ fontSize:T.meta, color:C.muted, fontStyle:"italic", padding:"2px 2px 4px" }}>No votes yet.</div>
               ) : (
                 <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                   {rows.map((e) => {
@@ -5347,17 +5512,17 @@ function VoteLog({ data, onDelete, onClose }) {
                     const known = e.win && e.lose;
                     return (
                       <div key={e.g + e.m} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 11px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
-                        <span style={{ fontSize:9.5, fontWeight:800, letterSpacing:"0.04em", textTransform:"uppercase", color:gColor(e.g), background:gTint(e.g), borderRadius:999, padding:"2px 7px", flexShrink:0 }}>{e.g === "boy" ? "Boy" : "Girl"}</span>
+                        <span style={{ fontSize:T.micro, fontWeight:800, letterSpacing:"0.04em", textTransform:"uppercase", color:gColor(e.g), background:gTint(e.g), borderRadius:R.card, padding:"2px 7px", flexShrink:0 }}>{e.g === "boy" ? "Boy" : "Girl"}</span>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13.5, color:C.ink }}>
+                          <div style={{ fontSize:T.body, color:C.ink }}>
                             {known
                               ? <><b className="disp">{nameOf(e.g, e.win)}</b> <span style={{ color:C.muted }}>over</span> {nameOf(e.g, e.lose)}</>
                               : <span style={{ color:C.muted, fontStyle:"italic" }}>matchup unavailable</span>}
                           </div>
-                          <div style={{ fontSize:11, color:C.muted }}>{when.rel}{when.abs ? ` · ${when.abs}` : ""}</div>
+                          <div style={{ fontSize:T.micro, color:C.muted }}>{when.rel}{when.abs ? ` · ${when.abs}` : ""}</div>
                         </div>
                         {e.baseline ? (
-                          <span style={{ fontSize:10, color:C.line, flexShrink:0 }} title="Oldest kept vote — can’t be removed on its own">—</span>
+                          <span style={{ fontSize:T.micro, color:C.line, flexShrink:0 }} title="Oldest kept vote — can’t be removed on its own">—</span>
                         ) : (
                           <button
                             onClick={() => { if (window.confirm(`Remove ${data.profiles[p.key] || p.name}’s vote${known ? ` (${nameOf(e.g, e.win)} over ${nameOf(e.g, e.lose)})` : ""}? Their rankings will recompute. This can’t be undone.`)) onDelete(p.key, e.g, e.m); }}
@@ -5385,19 +5550,19 @@ function WhoPanel({ roster, onChoose, onDelete }) {
   return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <div style={{ width:"100%", maxWidth:480, background:C.paper, border:`1px solid ${C.line}`, borderRadius:20, padding:"36px 30px" }}>
-        <h1 className="disp" style={{ margin:"0 0 6px", letterSpacing:"0.06em", fontSize:38, fontWeight:800, textTransform:"uppercase", textAlign:"center" }}>
+        <h1 className="disp" style={{ margin:"0 0 6px", letterSpacing:"0.06em", fontSize:T.display, fontWeight:800, textTransform:"uppercase", textAlign:"center" }}>
           Name<span style={{ color:C.sage }}>·</span>Off
         </h1>
-        <p style={{ fontSize:15, textAlign:"center", color:C.muted, margin:"0 0 22px", lineHeight:1.45 }}>
+        <p style={{ fontSize:T.name, textAlign:"center", color:C.muted, margin:"0 0 22px", lineHeight:1.45 }}>
           {roster.length > 0 ? "Tap your name below, or type it if you’re new." : "What’s your first name? We’ll remember you on this device."}
         </p>
         {roster.length > 0 && (
           <div style={{ marginBottom:22 }}>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:10 }}>Select your name</div>
+            <div style={{ fontSize:T.meta, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:10 }}>Select your name</div>
             <div style={{ display:"flex", flexWrap:"wrap", gap:10 }}>
               {roster.map((p) => (
                 <span key={p.key} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 12px 8px 16px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}` }}>
-                  <button onClick={() => onChoose(p.name)} className="lift" style={{ display:"flex", alignItems:"center", gap:8, fontSize:16, fontWeight:700, color:C.ink }}>
+                  <button onClick={() => onChoose(p.name)} className="lift" style={{ display:"flex", alignItems:"center", gap:8, fontSize:T.name, fontWeight:700, color:C.ink }}>
                     <span style={{ width:10, height:10, borderRadius:999, background:pColor(p.key) }} /> {p.name}
                   </button>
                   {onDelete && !OWNERS.includes(p.key) && (
@@ -5411,13 +5576,13 @@ function WhoPanel({ roster, onChoose, onDelete }) {
             </div>
           </div>
         )}
-        <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:10 }}>{roster.length > 0 ? "New here? Add yourself" : "Your first name"}</div>
+        <div style={{ fontSize:T.meta, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:10 }}>{roster.length > 0 ? "New here? Add yourself" : "Your first name"}</div>
         <div style={{ display:"flex", gap:10 }}>
           <input value={name} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onChoose(name)}
-            placeholder="First name" style={{ flex:1, padding:"12px 14px", borderRadius:12, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:16 }} />
-          <button onClick={() => onChoose(name)} className="lift" style={{ padding:"12px 22px", borderRadius:12, fontSize:16, fontWeight:700, background:C.sage, color:"#fff" }}>Start</button>
+            placeholder="First name" style={{ flex:1, padding:"12px 14px", borderRadius:12, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:T.name }} />
+          <button onClick={() => onChoose(name)} className="lift" style={{ padding:"12px 22px", borderRadius:12, fontSize:T.name, fontWeight:700, background:C.sage, color:"#fff" }}>Start</button>
         </div>
-        <p style={{ fontSize:12.5, color:C.muted, marginTop:22, lineHeight:1.5 }}>
+        <p style={{ fontSize:T.meta, color:C.muted, marginTop:22, lineHeight:1.5 }}>
           You’ll vote on your own first. Once you’ve cast 10 votes, the Rankings and Trends tabs unlock.
         </p>
       </div>
@@ -5429,12 +5594,12 @@ function LockMsg({ myVotes }) {
   return (
     <div style={{ borderRadius:12, padding:"40px 20px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
       <div style={{ display:"flex", justifyContent:"center", marginBottom:10 }}><Ic n="heart" s={26} c={C.line} /></div>
-      <p style={{ fontSize:15, fontWeight:700, color:C.ink, margin:"0 0 4px" }}>Vote first to unlock this</p>
-      <p style={{ fontSize:13, margin:"0 0 12px" }}>Just {left} more {left === 1 ? "matchup" : "matchups"} to go — then Rankings &amp; Trends open up. 🌱</p>
+      <p style={{ fontSize:T.name, fontWeight:700, color:C.ink, margin:"0 0 4px" }}>Vote first to unlock this</p>
+      <p style={{ fontSize:T.body, margin:"0 0 12px" }}>Just {left} more {left === 1 ? "matchup" : "matchups"} to go — then Rankings &amp; Trends open up. 🌱</p>
       <div style={{ maxWidth:220, margin:"0 auto", height:8, borderRadius:999, background:C.line, overflow:"hidden" }}>
         <div style={{ height:8, borderRadius:999, width:`${Math.min(100, (myVotes / UNLOCK_VOTES) * 100)}%`, background:C.sage, transition:"width .3s ease" }} />
       </div>
-      <p style={{ fontSize:11, margin:"6px 0 0", color:C.muted }}>{myVotes}/{UNLOCK_VOTES}</p>
+      <p style={{ fontSize:T.micro, margin:"6px 0 0", color:C.muted }}>{myVotes}/{UNLOCK_VOTES}</p>
     </div>
   );
 }
@@ -5444,10 +5609,10 @@ function Seg({ items, value, onChange, active = C.sage }) {
   // `active` may be a color, or a function (key) => color for per-item tints.
   const colorFor = (k) => (typeof active === "function" ? active(k) : active);
   return (
-    <div style={{ display:"flex", gap:4, padding:4, borderRadius:999, background:C.paper, border:`1px solid ${C.line}` }}>
+    <div style={{ display:"flex", gap:4, padding:4, borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label]) => (
         <button key={k} onClick={() => onChange(k)} className="lift"
-          style={{ padding:"4px 12px", borderRadius:999, fontSize:14, fontWeight:600,
+          style={{ padding:"4px 12px", borderRadius:R.card, fontSize:T.body, fontWeight:600,
             ...(value === k ? { background: colorFor(k), color:"#fff" } : { color: C.muted }) }}>{label}</button>
       ))}
     </div>
@@ -5459,78 +5624,31 @@ function syncDot(sync) {
   if (sync.status === "saving" || sync.status === "syncing") return C.ochre;
   return C.sage;
 }
-function Header({ me, myColor, onSwitch, showAdd, setShowAdd, popMode, setPopMode, onOpenLog }) {
+function Header({ me, myColor, onSwitch, showAdd, setShowAdd }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
-        <h1 className="disp" style={{ margin:0, letterSpacing:"0.06em", fontSize:32, fontWeight:800, textTransform:"uppercase" }}>
-          Name<span style={{ color:C.sage }}>·</span>Off
-        </h1>
-        <button onClick={onSwitch} className="lift" title="Not you? Switch voter"
-          style={{ display:"flex", alignItems:"center", gap:7, padding:"5px 12px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}` }}>
-          <span style={{ width:9, height:9, borderRadius:999, background:myColor }} />
-          <span style={{ fontSize:13, fontWeight:700, color:C.ink }}>{me}</span>
-          <span style={{ fontSize:11, fontWeight:600, color:C.muted }}>switch</span>
-        </button>
-      </div>
-      <div style={{ display:"flex", gap:8, marginTop:12, alignItems:"center", flexWrap:"wrap" }}>
-        <div style={{ marginRight:"auto" }}>
-          <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
-        </div>
-        {onOpenLog && (
-          <button onClick={onOpenLog} className="lift" title="Vote log — review & undo past votes"
-            style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 14px", borderRadius:999, fontSize:13.5, fontWeight:700, background:C.paper, color:C.muted, border:`1px solid ${C.line}` }}>
-            <Ic n="list" s={15} /> Vote log
-          </button>
-        )}
-        <button onClick={() => setShowAdd((s) => !s)} className="lift"
-          style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:999, fontSize:15, fontWeight:700,
-            ...(showAdd ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.sage, border:`1px solid ${C.line}` }) }}>
-          <Ic n={showAdd ? "x" : "plus"} s={16} /> {showAdd ? "Close" : "Add name"}
-        </button>
-      </div>
+    <div style={{ display:"flex", alignItems:"center", gap:S.sm, flexWrap:"wrap", marginBottom:S.lg }}>
+      <h1 className="disp" style={{ margin:0, marginRight:"auto", letterSpacing:"0.06em", fontSize:T.title, fontWeight:800, textTransform:"uppercase" }}>
+        Name<span style={{ color:C.sage }}>·</span>Off
+      </h1>
+      <button onClick={() => setShowAdd((o) => !o)} className="lift"
+        style={{ display:"flex", alignItems:"center", gap:S.xs, padding:"7px 14px", borderRadius:R.card, fontSize:T.body, fontWeight:700,
+          ...(showAdd ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.sage, border:`1px solid ${C.line}` }) }}>
+        <Ic n={showAdd ? "x" : "plus"} s={15} /> {showAdd ? "Close" : "Add name"}
+      </button>
+      <button onClick={onSwitch} className="lift" title="Not you? Switch voter"
+        style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:R.pill, background:C.paper, border:`1px solid ${C.line}` }}>
+        <span style={{ width:9, height:9, borderRadius:R.pill, background:myColor }} />
+        <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>{me}</span>
+      </button>
     </div>
   );
 }
-
-/* ------------------------------ sync panel ------------------------------- */
-function SyncPanel({ sync, onConnect, onClose }) {
-  const [url, setUrl] = useState(store.url);
-  const [key, setKey] = useState(store.key);
-  const status = !sync.on ? "Local only on this device, not shared."
-    : sync.status === "error" ? `Sync error: ${sync.err || "check the URL, anon key, and that the table + policies exist"}`
-    : sync.status === "saving" ? "Saving…" : sync.status === "syncing" ? "Connecting…"
-    : `Synced${sync.at ? " · " + new Date(sync.at).toLocaleTimeString() : ""}`;
-  const field = { flex:1, minWidth:200, padding:"8px 10px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:13 };
-  return (
-    <div style={{ borderRadius:12, padding:12, marginBottom:16, background:C.paper, border:`1px solid ${C.line}` }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <span className="disp" style={{ fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em", fontSize:14 }}>Shared sync · Supabase</span>
-        <button onClick={onClose} className="lift" style={{ color:C.muted }}><Ic n="x" s={15} /></button>
-      </div>
-      <p style={{ fontSize:12, color:C.muted, margin:"6px 0 8px" }}>
-        Paste your Supabase <b>Project URL</b> and <b>anon public key</b> (Settings → API). Enter the same two on both phones to share one ranking. Leave blank to stay local.
-      </p>
-      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxxx.supabase.co" style={field} />
-        <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="anon public key (eyJ…)" style={field} />
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          <button onClick={() => onConnect(url, key)} className="lift" style={{ padding:"8px 14px", borderRadius:8, fontWeight:700, background:C.sage, color:"#fff" }}>Connect</button>
-          {sync.on && <button onClick={() => { setUrl(""); setKey(""); onConnect("", ""); }} className="lift" style={{ padding:"8px 12px", borderRadius:8, border:`1px solid ${C.line}`, color:C.muted }}>Disconnect</button>}
-        </div>
-      </div>
-      <div style={{ fontSize:11, marginTop:8, color: sync.status === "error" ? C.clay : C.muted }}>{status}</div>
-    </div>
-  );
-}
-
-/* ------------------------------ add panel -------------------------------- */
-function AddPanel({ custom, onAdd, onRemove }) {
+function AddPanel({ custom, onAdd, onRemove, data, onRename, canEdit, popMode, setPopMode, onOpenLog }) {
   const [name, setName] = useState("");
   const [nicks, setNicks] = useState("");
   const [g, setG] = useState("girl");
   const submit = () => { if (!name.trim()) return; onAdd(name, nicks, g); setName(""); setNicks(""); };
-  const inputStyle = { padding:"8px 10px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:13, width:"100%" };
+  const inputStyle = { padding:"8px 10px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:T.body, width:"100%" };
   return (
     <div style={{ borderRadius:12, padding:12, marginBottom:16, background:C.paper, border:`1px solid ${C.line}` }}>
       <div className="addgrid">
@@ -5541,7 +5659,17 @@ function AddPanel({ custom, onAdd, onRemove }) {
         <Seg items={[["girl","Girl"],["boy","Boy"],["both","Both"]]} value={g} onChange={setG} />
         <button onClick={submit} className="lift" style={{ padding:"6px 16px", borderRadius:8, fontWeight:700, background:C.sage, color:"#fff" }}>Add</button>
       </div>
-      <p style={{ fontSize:11, marginTop:8, color:C.muted }}>New names join voting right away and show “popularity &amp; meaning pending” until their SSA ranks and origin are filled in.</p>
+      <p style={{ fontSize:T.micro, marginTop:S.sm, color:C.muted }}>New names join voting right away and show “popularity &amp; meaning pending” until their SSA ranks and origin are filled in.</p>
+      {canEdit && <SpellPanel data={data} onRename={onRename} />}
+      <div style={{ display:"flex", alignItems:"center", gap:S.sm, flexWrap:"wrap", marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
+        <span style={{ ...LABEL, color:C.muted }}>Show popularity as</span>
+        <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
+        <span style={{ flex:1 }} />
+        <button onClick={onOpenLog} className="lift" title="Review & undo past votes"
+          style={{ display:"flex", alignItems:"center", gap:S.xs, padding:"6px 12px", borderRadius:R.card, fontSize:T.meta, fontWeight:700, background:C.bg, color:C.muted, border:`1px solid ${C.line}` }}>
+          <Ic n="list" s={13} /> Vote log
+        </button>
+      </div>
     </div>
   );
 }
@@ -5553,7 +5681,7 @@ function Tabs({ view, setView }) {
     <div style={{ display:"flex", gap:4, marginBottom:20, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label, icon]) => (
         <button key={k} onClick={() => setView(k)} className="lift"
-          style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"8px 0", borderRadius:8, fontSize:14, fontWeight:600,
+          style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"8px 0", borderRadius:8, fontSize:T.body, fontWeight:600,
             ...(view === k ? { background:C.bg, color:C.ink, boxShadow:"0 1px 0 rgba(0,0,0,0.04)" } : { color:C.muted }) }}>
           <Ic n={icon} s={15} /> {label}
         </button>
@@ -5622,17 +5750,28 @@ function funcPop(id, gender) {
   const ownPct = pctOf(id, gender);
   const vinfo = VARIANTS[id] && VARIANTS[id][gender];
   const vids = vinfo ? vinfo.ids : [];
-  const spell = [{ label: capId(id), rank: ownRank, pct: ownPct }]
+  const spell = [{ label: dispName(id, capId(id)), rank: ownRank, pct: ownPct }]
     .concat(vids.map((v) => ({ label: capId(v), rank: rankOf(v, gender), pct: pctOf(v, gender) })));
   const funcPct = spell.reduce((s, c) => s + (c.pct || 0), 0) || null;
   const hasVar = vids.length > 0;
   const funcRank = hasVar ? approxRank(funcPct, gender) : ownRank;
+  // The "nickname popularity" pills follow the nickname chips on the card: one that
+  // was removed stops showing a figure, and one that was added gets a figure if the
+  // SSA data knows it as a name in its own right.
+  const hidden = new Set(hiddenNicksFor(HIDDEN_NICKS, gender, id).map((x) => x.toLowerCase()));
   const nicks = ((COMBINE[id] && COMBINE[id][gender]) || []).map((lk) => {
     if (lk.ids) {
       const sum = lk.ids.reduce((s, v) => s + (pctOf(v, gender) || 0), 0) || null;
       return { label: lk.label, pct: sum, rank: approxRank(sum, gender), approx: true };
     }
     return { label: lk.label, pct: pctOf(lk.id, gender), rank: rankOf(lk.id, gender), approx: false };
+  }).filter((nk) => !hidden.has(nk.label.toLowerCase()));
+  const listed = new Set(nicks.map((nk) => nk.label.toLowerCase()));
+  addedNicksFor(ADDED_NICKS, gender, id).forEach((nk) => {
+    const vid = slug(nk);
+    if (listed.has(nk.toLowerCase()) || !POP[vid]) return;
+    listed.add(nk.toLowerCase());
+    nicks.push({ label: nk, pct: pctOf(vid, gender), rank: rankOf(vid, gender), approx: false });
   });
   return { series: displaySeries(id, gender), funcPct, funcRank, hasVar, spell, nicks, year: raw[raw.length - 1].year };
 }
@@ -5689,7 +5828,11 @@ function PopLine({ id, gender, compact = false, noChart = false, meaningShown = 
     sparkGender = uc.dom;
     sparkApprox = true;
   }
-  const hasBreakdown = fp.hasVar || (compact && (fp.nicks.length > 0 || (!!MEANING[id] && !meaningShown)));
+  // With the chart suppressed (the vote card), the sparkline moves INTO the
+  // disclosure rather than disappearing — so the card stays short but the trend is
+  // still one tap away.
+  const chartInPanel = noChart && !!sparkSeries;
+  const hasBreakdown = fp.hasVar || chartInPanel || (compact && (fp.nicks.length > 0 || (!!MEANING[id] && !meaningShown)));
   const cell = (r, p, approx) => popMode === "pct"
     ? (fmtPct(p) || (r == null ? "1000+" : "n/a"))
     : fmtRank(r, approx, true);
@@ -5714,7 +5857,12 @@ function PopLine({ id, gender, compact = false, noChart = false, meaningShown = 
       {open && hasBreakdown && (
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 5, padding: "7px 9px", borderRadius: 10, background: `${C.sage}12`, border: `1px solid ${C.line}`, fontSize: 10.5, color: C.ink, lineHeight: 1.5 }}>
           {compact && MEANING[id] && (
-            <div style={{ marginBottom: (fp.hasVar || fp.nicks.length) ? 6 : 0, fontStyle: "italic" }}>{MEANING[id]}</div>
+            <div style={{ marginBottom: (fp.hasVar || fp.nicks.length || chartInPanel) ? 6 : 0, fontStyle: "italic" }}>{MEANING[id]}</div>
+          )}
+          {chartInPanel && (
+            <div style={{ display:"flex", justifyContent:"center", marginBottom: (fp.hasVar || fp.nicks.length) ? 6 : 0 }}>
+              <Sparkline series={sparkSeries} w={150} h={38} color={C.sage} compact mode={popMode} gender={sparkGender} approx={sparkApprox} />
+            </div>
           )}
           {fp.hasVar && (
             <div style={{ marginBottom: (compact && fp.nicks.length) ? 6 : 0 }}>
@@ -5748,123 +5896,146 @@ function PopLine({ id, gender, compact = false, noChart = false, meaningShown = 
   );
 }
 
+/* ----------------------------- name editing ------------------------------ */
+// A name, with the spelling editable in place. Rendered wherever a name is shown
+// (vote card, rankings row, Manage names) so a misspelling gets fixed where you
+// spot it. The rename is display-only — see renameName — so every vote, veto,
+// star, nickname and note on that name survives it.
+function NameText({ id, name, className, style, iconSize = 12 }) {
+  const ed = React.useContext(EditCtx);
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(name);
+  const stop = (e) => e.stopPropagation();
+  if (!ed || !ed.canEdit) return <span className={className} style={style}>{name}</span>;
+  const submit = () => { const v = val.trim(); setEditing(false); if (v && v !== name) ed.onRename(id, v); };
+  if (editing) return (
+    <input autoFocus value={val} onClick={stop} onChange={(e) => setVal(e.target.value)}
+      onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") submit(); else if (e.key === "Escape") setEditing(false); }}
+      onBlur={submit} aria-label={`Spelling for ${name}`} className={className}
+      style={{ ...style, width:`${Math.max(5, val.length + 1)}ch`, background:C.paper, color:C.ink, border:`1px solid ${C.sage}`, borderRadius:8, padding:"0 6px" }} />
+  );
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, minWidth:0 }}>
+      <span className={className} style={style}>{name}</span>
+      <button onClick={(e) => { stop(e); setVal(name); setEditing(true); }} className="lift"
+        aria-label={`Fix the spelling of ${name}`} title="Fix the spelling"
+        style={{ display:"flex", background:"none", padding:2, color:C.muted, opacity:0.5 }}><Ic n="pencil" s={iconSize} c={C.muted} /></button>
+    </span>
+  );
+}
+
 /* -------------------------------- vote ----------------------------------- */
-// Inline nickname adder/remover. Reused on the vote cards, the rankings rows, and
-// the Manage-names panel. Anyone can add a nickname to any name; only nicknames a
-// user added (in `added`) can be removed. Stops click/key bubbling so it can live
+// Inline nickname editor. Reused on the vote cards, the rankings rows, the
+// suggestion cards and the Manage-names panel. Anyone can add a nickname to any
+// name; with `canRemove` you can also retype or delete ANY of them — the ones the
+// app ships with included (see editNicks). Stops click/key bubbling so it can live
 // inside a clickable vote card without triggering a vote.
-function NickEditor({ id, nicks, added, onAddNick, onRemoveNick, center, big, canRemove, gender }) {
+function NickEditor({ id, nicks, onAddNick, onRemoveNick, center, big, canRemove, gender }) {
+  // false = idle, true = typing a new one, a string = retyping that nickname.
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState("");
-  const addedSet = new Set((added || []).map((x) => x.toLowerCase()));
-  const submit = () => { const v = val.trim(); if (v) onAddNick(gender, id, v); setVal(""); setEditing(false); };
+  const ed = React.useContext(EditCtx);
   const fs = big ? 13 : 11;
+  const stop = (e) => e.stopPropagation();
+  const submit = () => {
+    const v = val.trim();
+    if (typeof editing === "string") { if (v && v !== editing && ed) ed.onRenameNick(gender, id, editing, v); }
+    else if (v) onAddNick(gender, id, v);
+    setVal(""); setEditing(false);
+  };
+  const field = (
+    <input autoFocus value={val} onClick={stop} onChange={(e) => setVal(e.target.value)}
+      onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") submit(); else if (e.key === "Escape") { setEditing(false); setVal(""); } }}
+      onBlur={submit} placeholder="nickname"
+      aria-label={typeof editing === "string" ? `Rename nickname ${editing}` : "New nickname"}
+      style={{ fontSize:fs, padding: big ? "2px 8px" : "2px 7px", borderRadius:999, border:`1px solid ${C.sage}`, width: big ? 96 : 84, background:C.paper, color:C.ink }} />
+  );
+  const canRetype = canRemove && ed && ed.onRenameNick;
   return (
-    <div onClick={(e) => e.stopPropagation()} style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap", justifyContent: center ? "center" : "flex-start" }}>
-      {(nicks || []).map((nk) => (
+    <div onClick={stop} style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap", justifyContent: center ? "center" : "flex-start" }}>
+      {(nicks || []).map((nk) => editing === nk ? <React.Fragment key={nk}>{field}</React.Fragment> : (
         <span key={nk} style={{ display:"flex", alignItems:"center", gap:3, fontSize:fs, fontWeight:600, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>
-          {nk}
-          {canRemove && addedSet.has(nk.toLowerCase()) && (
-            <button onClick={(e) => { e.stopPropagation(); onRemoveNick(gender, id, nk); }} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
+          {canRetype
+            ? <button onClick={(e) => { stop(e); setVal(nk); setEditing(nk); }} className="lift" title="Retype this nickname"
+                style={{ background:"none", padding:0, color:C.ink, fontWeight:600, fontSize:fs }}>{nk}</button>
+            : nk}
+          {canRemove && (
+            <button onClick={(e) => { stop(e); onRemoveNick(gender, id, nk); }} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
               style={{ display:"flex", color:C.clay, padding:0, background:"none" }}><Ic n="x" s={big ? 11 : 9} c={C.clay} /></button>
           )}
         </span>
       ))}
-      {editing
-        ? <input autoFocus value={val} onClick={(e) => e.stopPropagation()} onChange={(e) => setVal(e.target.value)}
-            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") submit(); else if (e.key === "Escape") { setEditing(false); setVal(""); } }}
-            onBlur={submit} placeholder="nickname"
-            style={{ fontSize:fs, padding: big ? "2px 8px" : "2px 7px", borderRadius:999, border:`1px solid ${C.sage}`, width: big ? 96 : 84, background:C.paper, color:C.ink }} />
-        : <button onClick={(e) => { e.stopPropagation(); setEditing(true); }} className="lift" title="Add a nickname (anyone can)"
+      {editing === true
+        ? field
+        : <button onClick={(e) => { stop(e); setVal(""); setEditing(true); }} className="lift" title="Add a nickname (anyone can)"
             style={{ fontSize:fs, fontWeight:700, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage, background:"transparent" }}>add nickname</button>}
     </div>
   );
 }
-function NameCard({ n, gender, onPick, onVeto, picked, dim, added, onAddNick, onRemoveNick, canRemoveNick, vetoWord = "Veto" }) {
+function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveNick, canRemoveNick, vetoWord = "Veto", guest = false }) {
   const chosen = picked === n.id;
   const accent = gColor(gender);     // pink for girls, blue for boys (follows the matchup)
   const popMode = React.useContext(PopModeCtx);
   const fp = funcPop(n.id, gender);
   const popNicks = (fp ? fp.nicks : []).filter((nk) => nk.rank != null || nk.pct != null);
-  // Swipe-to-pick on touch devices: drag a card sideways past a threshold to choose it.
-  const [dx, setDx] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const start = useRef(null);
-  const swiped = useRef(false); // suppress the trailing click after a real drag
-  const THRESH = 70;
-  const onTouchStart = (e) => {
-    swiped.current = false;
-    if (picked) return;
-    const t = e.target;
-    if (t.closest && t.closest("button, input")) { start.current = null; return; } // let controls work
-    const p = e.touches[0]; start.current = { x: p.clientX, y: p.clientY }; setDragging(true);
-  };
-  const onTouchMove = (e) => {
-    if (!start.current || picked) return;
-    const p = e.touches[0], ddx = p.clientX - start.current.x, ddy = p.clientY - start.current.y;
-    if (Math.abs(ddx) > Math.abs(ddy)) { if (Math.abs(ddx) > 8) swiped.current = true; setDx(ddx); }
-  };
-  const onTouchEnd = () => {
-    if (!start.current) { setDragging(false); return; }
-    const hit = Math.abs(dx) > THRESH && !picked;
-    start.current = null; setDragging(false); setDx(0);
-    if (hit) onPick();
-  };
-  const baseTransform = chosen ? "translateY(-3px)" : "none";
-  const transform = dx ? `translateX(${dx}px) rotate(${(dx / 30).toFixed(2)}deg)` : baseTransform;
+  // Picking is a plain tap on the card — no swipe, so vertical scrolling stays normal.
+  // A guest's Pass takes two taps: the first explains what it does, the second commits.
+  const [armed, setArmed] = useState(false);
+  useEffect(() => { setArmed(false); }, [n.id]);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [armed]);
   return (
     <div role="button" tabIndex={picked ? -1 : 0} aria-label={`Pick ${n.name}`}
-      onClick={() => { if (swiped.current) { swiped.current = false; return; } if (!picked) onPick(); }}
+      onClick={() => { if (!picked) onPick(); }}
       onKeyDown={(e) => { if (!picked && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onPick(); } }}
-      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
       className="lift" style={{
-        flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", borderRadius:16, padding:"44px 16px 22px", textAlign:"center", position:"relative", background:gCard(gender),
-        border:`2px solid ${(chosen || Math.abs(dx) > THRESH) ? accent : "transparent"}`, minHeight:180,
-        boxShadow: chosen ? `0 0 0 4px ${accent}22` : "0 2px 0 rgba(0,0,0,0.05)",
-        opacity: dim ? 0.4 : 1, transform, transition: dragging ? "none" : "transform .22s ease, border-color .15s ease", touchAction:"pan-y",
+        flex:1, display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", borderRadius:R.card,
+        padding:`${S.xl}px ${S.md}px`, textAlign:"center", position:"relative", background:gCard(gender),
+        border:`2px solid ${chosen ? C.ink : "transparent"}`, minHeight:0,
+        boxShadow: chosen ? `0 0 0 3px ${C.ink}22` : "none",
+        opacity: dim ? 0.4 : 1, transform: chosen ? "translateY(-3px)" : "none", transition: "transform .22s ease, border-color .15s ease",
         cursor: picked ? "default" : "pointer",
       }}>
-      <button onClick={(e) => { e.stopPropagation(); onVeto(); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
-        className="lift" style={{ position:"absolute", top:10, right:10, display:"flex", alignItems:"center", gap:4, fontSize:11, fontWeight:700, padding:"4px 10px", borderRadius:999, color:C.clay, background:C.bg, border:`1px solid ${C.line}` }}>
-        <Ic n="ban" s={13} /> {vetoWord}
-      </button>
-      {/* Fixed-height slots so every parallel row lines up across both cards. */}
-      <div style={{ minHeight:46, display:"flex", alignItems:"center", justifyContent:"center" }}>
-        <span className="disp" style={{ fontSize:36, fontWeight:800, lineHeight:1.04, color:C.ink }}>{n.name}</span>
-      </div>
-      <div style={{ minHeight:14, fontSize:11.5, color:C.clay, fontStyle:"italic" }}>{sayOf(n.id) ? `“${sayOf(n.id)}”` : ""}</div>
-      <div style={{ minHeight:28, marginTop:8, display:"flex", justifyContent:"center", alignItems:"center" }}>
+      {(guest && armed)
+        ? <button onClick={(e) => { e.stopPropagation(); setArmed(false); onVeto(); }} disabled={!!picked}
+            aria-label={`Confirm: pass on ${n.name} and take it off your list for good`}
+            className="lift" style={{ position:"absolute", top:S.md, left:S.md, right:S.md, display:"flex", alignItems:"center", justifyContent:"center",
+              gap:S.xs, fontSize:T.micro, fontWeight:700, padding:"5px 10px", borderRadius:R.pill, color:"#fff", background:C.clay }}>
+            <Ic n="ban" s={12} c="#fff" /> Tap again — removes it for good
+          </button>
+        : <button onClick={(e) => { e.stopPropagation(); if (guest) setArmed(true); else onVeto(); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
+            title={guest
+              ? "Pass — takes this name off your list for good, and Claire and Andrew can see it. Just want a different pair? Pick either card, or use “Can’t decide, skip”."
+              : "Veto — takes it out for both of you"}
+            className="lift" style={{ position:"absolute", top:S.md, right:S.md, display:"flex", alignItems:"center", gap:S.xs, fontSize:T.micro, fontWeight:700,
+              padding:"4px 10px", borderRadius:R.pill, color:C.clay, background:"rgba(255,255,255,0.55)" }}>
+            <Ic n="ban" s={12} /> {vetoWord}
+          </button>}
+      {/* Four rows, and only the name is loud. Meaning, the popularity chart, the
+          nickname figures and the spelling breakdown all live behind the “i” on the
+          popularity line — they're reference, not what you decide on. */}
+      <NameText id={n.id} name={n.name} className="disp" iconSize={15}
+        style={{ fontSize:T.display, fontWeight:800, lineHeight:1.0, letterSpacing:"-0.015em", color:C.ink }} />
+      {sayOf(n.id) && <div style={{ marginTop:S.xs, fontSize:T.meta, color:C.ink, opacity:0.62, fontStyle:"italic" }}>“{sayOf(n.id)}”</div>}
+      <div style={{ marginTop:S.md, display:"flex", justifyContent:"center" }}>
         {onAddNick
-          ? <NickEditor id={n.id} nicks={n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={canRemoveNick} gender={gender} center big />
-          : <span style={{ fontSize:17, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</span>}
+          ? <NickEditor id={n.id} nicks={n.nicks} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={canRemoveNick} gender={gender} center big />
+          : <span style={{ fontSize:T.name, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</span>}
       </div>
-      <div style={{ minHeight:36, marginTop:6, fontSize:12.5, color:C.muted, fontStyle:"italic", lineHeight:1.4 }}>{MEANING[n.id] ? cleanMeaning(MEANING[n.id]) : ""}</div>
-      <div style={{ minHeight:15, fontSize:11, fontWeight:600, color:C.sage }}>{(n.byName && !isOwner(n.by)) ? `✨ suggested by ${n.byName}` : ""}</div>
-      <div style={{ minHeight:88, marginTop:6, display:"flex", justifyContent:"center", alignItems:"center" }}>
-        {fp ? <PopLine id={n.id} gender={gender} />
-            : <span style={{ fontSize:11, fontStyle:"italic", color:C.muted }}>Popularity &amp; meaning pending</span>}
+      <div style={{ marginTop:S.md, display:"flex", justifyContent:"center" }}>
+        {fp ? <PopLine id={n.id} gender={gender} compact noChart />
+            : <span style={{ fontSize:T.meta, fontStyle:"italic", color:C.ink, opacity:0.55 }}>Popularity &amp; meaning pending</span>}
       </div>
-      <div style={{ minHeight:50, marginTop:8 }}>
-        {popNicks.length > 0 && (
-          <div>
-            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:5 }}>Nickname popularity</div>
-            <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
-              {popNicks.map((nk, i) => {
-                const fig = popMode === "pct" ? (fmtPct(nk.pct) || "") : (nk.rank == null ? "1000+" : (nk.approx ? "≈#" : "#") + nk.rank);
-                return (
-                  <span key={i} title="How common this nickname is on its own" style={{ fontSize:11, fontWeight:700, padding:"2px 10px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, lineHeight:1.4 }}>
-                    {nk.label} <span style={{ color:C.muted, fontWeight:600 }}>{fig}</span>
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      {n.byName && !isOwner(n.by) && (
+        <div style={{ marginTop:S.sm, fontSize:T.micro, fontWeight:600, color:C.ink, opacity:0.6 }}>suggested by {n.byName}</div>
+      )}
     </div>
   );
 }
-function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, canGoBack, profile, addnicks, onAddNick, onRemoveNick }) {
+function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, canGoBack, profile, onAddNick, onRemoveNick }) {
   // Keyboard voting for fast sessions: ←/→ pick left/right, Space skips.
   useEffect(() => {
     const onKey = (e) => {
@@ -5878,17 +6049,18 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, can
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [pair, picked, onVote, onSkip]);
+  // The round label is a quiet centred word, not a pill on its own line — the two
+  // color fields below already say which round this is.
   const banner = (
-    <div style={{ display:"flex", justifyContent:"center", marginBottom:14 }}>
-      <span className="disp" style={{ fontSize:14, fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase", color: gColor(gender),
-        padding:"6px 22px", borderRadius:999, background: gTint(gender), border:`1px solid ${C.line}` }}>{gLabel(gender)}</span>
+    <div style={{ display:"flex", justifyContent:"center", marginBottom:S.sm }}>
+      <span className="disp" style={{ ...LABEL, letterSpacing:"0.16em", color: gColor(gender) }}>{gLabel(gender)}</span>
     </div>
   );
   if (!pair) return (
     <div className="voteWrap">
       {banner}
-      <p style={{ fontSize:14, borderRadius:12, padding:"32px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-        Not enough names left to compare. Un-veto a few in Rankings, or add more names.
+      <p style={{ fontSize:T.body, borderRadius:12, padding:"32px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+        Not enough names left to compare. Bring a few back in Rankings, or add more names.
       </p>
     </div>
   );
@@ -5898,20 +6070,20 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, can
     <div className="voteWrap">
       {banner}
       <div className="cards">
-        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} added={addedNicksFor(addnicks, gender, a)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} />
+        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Pass"} guest={!isOwner(profile)} />
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <span className="disp" style={{ fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
+          <span className="disp" style={{ fontSize:T.body, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} added={addedNicksFor(addnicks, gender, b)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} />
+        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Pass"} guest={!isOwner(profile)} />
       </div>
       <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
         <button onClick={onBack} disabled={!canGoBack} className="lift" title="Revisit your last vote and change it"
-          style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700, padding:"6px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, color: canGoBack ? C.teal : C.line, cursor: canGoBack ? "pointer" : "default" }}>
+          style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"6px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color: canGoBack ? C.teal : C.line, cursor: canGoBack ? "pointer" : "default" }}>
           <Ic n="back" s={14} c={canGoBack ? C.teal : C.line} /> Go back
         </button>
-        <button onClick={onSkip} disabled={!!picked} className="lift" style={{ fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:999, color:C.muted, border:`1px solid ${C.line}`, background:C.paper }}>Can’t decide, skip</button>
+        <button onClick={onSkip} disabled={!!picked} className="lift" style={{ fontSize:T.meta, fontWeight:600, padding:"6px 14px", borderRadius:R.card, color:C.muted, border:`1px solid ${C.line}`, background:C.paper }}>Can’t decide, skip</button>
       </div>
-      <p style={{ textAlign:"center", fontSize:11, color:C.muted, margin:"10px 0 0" }}>Tap or swipe a card to pick · ←/→ keys, space to skip</p>
+      <p style={{ textAlign:"center", fontSize:T.micro, color:C.muted, margin:"10px 0 0" }}>Tap a card to pick · ←/→ keys, space to skip</p>
     </div>
   );
 }
@@ -5926,14 +6098,14 @@ function NoteBlock({ id, notes, profile, onSetNote }) {
   return (
     <div style={{ marginTop:8, padding:"8px 10px", borderRadius:10, background:`${C.sage}10`, border:`1px solid ${C.line}` }}>
       {theirs
-        ? <div style={{ fontSize:12, color:C.ink, marginBottom:6, lineHeight:1.4 }}><b style={{ color:pColor(otherKey) }}>{PROFILES[otherKey]}:</b> {theirs}</div>
-        : <div style={{ fontSize:11, color:C.muted, marginBottom:6, fontStyle:"italic" }}>{PROFILES[otherKey]} hasn’t added a note.</div>}
+        ? <div style={{ fontSize:T.meta, color:C.ink, marginBottom:6, lineHeight:1.4 }}><b style={{ color:pColor(otherKey) }}>{PROFILES[otherKey]}:</b> {theirs}</div>
+        : <div style={{ fontSize:T.micro, color:C.muted, marginBottom:6, fontStyle:"italic" }}>{PROFILES[otherKey]} hasn’t added a note.</div>}
       <textarea value={val} onChange={(e) => setVal(e.target.value)} rows={2}
         placeholder={`${PROFILES[profile]}’s note (only you can edit this)`}
-        style={{ width:"100%", boxSizing:"border-box", fontSize:12, padding:"6px 8px", borderRadius:8, border:`1px solid ${C.line}`, background:C.bg, color:C.ink, resize:"vertical", fontFamily:"inherit" }} />
+        style={{ width:"100%", boxSizing:"border-box", fontSize:T.meta, padding:"6px 8px", borderRadius:8, border:`1px solid ${C.line}`, background:C.bg, color:C.ink, resize:"vertical", fontFamily:"inherit" }} />
       <div style={{ display:"flex", gap:8, marginTop:6 }}>
-        <button onClick={() => onSetNote(id, val)} disabled={!dirty} className="lift" style={{ fontSize:11, fontWeight:700, padding:"4px 12px", borderRadius:999, background: dirty ? C.sage : C.line, color: dirty ? "#fff" : C.muted }}>Save</button>
-        {mine && <button onClick={() => { setVal(""); onSetNote(id, ""); }} className="lift" style={{ fontSize:11, padding:"4px 10px", borderRadius:999, border:`1px solid ${C.line}`, color:C.clay }}>Delete mine</button>}
+        <button onClick={() => onSetNote(id, val)} disabled={!dirty} className="lift" style={{ fontSize:T.micro, fontWeight:700, padding:"4px 12px", borderRadius:R.card, background: dirty ? C.sage : C.line, color: dirty ? "#fff" : C.muted }}>Save</button>
+        {mine && <button onClick={() => { setVal(""); onSetNote(id, ""); }} className="lift" style={{ fontSize:T.micro, padding:"4px 10px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.clay }}>Delete mine</button>}
       </div>
     </div>
   );
@@ -5948,7 +6120,7 @@ function nameAttrib(n) {
 }
 // Join a few names conversationally: "A", "A & B", "A, B & 2 more".
 const fmtNames = (arr) => (arr.length <= 1 ? (arr[0] || "") : arr.length === 2 ? `${arr[0]} & ${arr[1]}` : `${arr.slice(0, 2).join(", ")} & ${arr.length - 2} more`);
-function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, added, onAddNick, onRemoveNick, haters, reserveHaters, iHardPassed, onUnpass }) {
+function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, onAddNick, onRemoveNick, haters, reserveHaters, iHardPassed, onUnpass }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
   const accent = rankColor(n > 1 ? (rank - 1) / (n - 1) : 0);
@@ -5957,14 +6129,14 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
   return (
     <li style={{ borderRadius:12, padding:"10px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-        <span className="disp" style={{ width:24, textAlign:"center", fontSize:18, fontWeight:700, color: accent }}>{rank}</span>
+        <span className="disp" style={{ width:24, textAlign:"center", fontSize:T.name, fontWeight:700, color: accent }}>{rank}</span>
         <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", justifyContent:"center" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-            <span className="disp" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{r.n.name}</span>
-            {attr.kind === "guest" && <span style={{ fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added by {attr.name}</span>}
-            {attr.kind === "unknown" && <button onClick={() => onClaim(r.n.id)} className="lift" style={{ fontSize:10, fontWeight:700, padding:"1px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.teal }}>claim this contribution</button>}
+            <NameText id={r.n.id} name={r.n.name} className="disp" style={{ fontSize:T.name, fontWeight:700, color:C.ink }} />
+            {attr.kind === "guest" && <span style={{ fontSize:T.micro, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added by {attr.name}</span>}
+            {attr.kind === "unknown" && <button onClick={() => onClaim(r.n.id)} className="lift" style={{ fontSize:T.micro, fontWeight:700, padding:"1px 8px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.teal }}>claim this contribution</button>}
             {showCombo && r.c != null && (
-              <span style={{ fontSize:10, fontWeight:600, padding:"1px 6px", borderRadius:999, background: r.split ? `${C.clay}1A` : C.line }}>
+              <span style={{ fontSize:T.micro, fontWeight:600, padding:"1px 6px", borderRadius:R.card, background: r.split ? `${C.clay}1A` : C.line }}>
                 <span style={{ color:C.claire, fontWeight:700 }}>C#{r.c}</span>
                 <span style={{ color:C.muted }}> · </span>
                 <span style={{ color:C.andrew, fontWeight:700 }}>A#{r.a}</span>
@@ -5974,7 +6146,7 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
           </div>
           <div style={{ minHeight:16, marginTop:2 }}>
             {/* Nicknames are editable by anyone in any view (not tied to the star/note readOnly gate). */}
-            <NickEditor id={r.n.id} nicks={r.n.nicks} added={added} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={gender} />
+            <NickEditor id={r.n.id} nicks={r.n.nicks} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={gender} />
           </div>
           <div style={{ height:6, borderRadius:999, marginTop:6, background:C.line }}>
             <div style={{ height:6, borderRadius:999, width:`${pctW}%`, background:accent }} />
@@ -5982,9 +6154,9 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
           {/* Reserve this line for every card in a column that has any haters, so the
               presence/absence of the dislike note never changes a card's height. */}
           {(reserveHaters || (haters && haters.length > 0)) && (
-            <div style={{ fontSize:11, marginTop:5, minHeight:16, color:C.clay, fontWeight:600, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-              <span>{haters && haters.length > 0 ? `💀 ${fmtNames(haters)} can’t stand this one` : ""}</span>
-              {iHardPassed && <button onClick={onUnpass} className="lift" style={{ fontSize:10, fontWeight:700, padding:"1px 7px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage, background:"transparent" }}>take mine back</button>}
+            <div style={{ fontSize:T.micro, marginTop:5, minHeight:16, color:C.clay, fontWeight:600, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              <span>{haters && haters.length > 0 ? `${fmtNames(haters)} passed on this` : ""}</span>
+              {iHardPassed && <button onClick={onUnpass} className="lift" style={{ fontSize:T.micro, fontWeight:700, padding:"1px 7px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.sage, background:"transparent" }}>Undo pass</button>}
             </div>
           )}
         </div>
@@ -5995,7 +6167,7 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
         )}
       </div>
       {!readOnly && (
-        <button onClick={() => setShowNote((s) => !s)} className="lift" style={{ marginTop:6, fontSize:11, fontWeight:600, padding:"3px 9px", borderRadius:999, border:`1px solid ${C.line}`, background:"transparent", color: noteCount ? C.sage : C.muted }}>
+        <button onClick={() => setShowNote((s) => !s)} className="lift" style={{ marginTop:6, fontSize:T.micro, fontWeight:600, padding:"3px 9px", borderRadius:R.card, border:`1px solid ${C.line}`, background:"transparent", color: noteCount ? C.sage : C.muted }}>
           ✎ {showNote ? "hide note" : (noteCount ? `notes · ${noteCount}` : "add note")}
         </button>
       )}
@@ -6007,24 +6179,34 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const [mode, setMode] = useState("combined");
   // The couple's combined ranking, the family aggregate, and a head-to-head of the
   // couple vs one individual voter.
-  const options = [{ key: "combined", name: "Neely-Stevenson" }, { key: "everyone", name: "Crowd Favorites" }, { key: "compare", name: "Voter vs. Voter" }, ...(isOwner(profile) ? [{ key: "mine", name: "My list" }] : [])];
+  const options = [{ key: "combined", name: "Our list" }, { key: "everyone", name: "Everyone" }, { key: "compare", name: "Side by side" }, ...(isOwner(profile) ? [{ key: "mine", name: "My list" }] : [])];
   // Two-up head-to-head: pick any two rankings — the couple combined, or any
   // individual who has voted — and see them side by side. Defaults to Claire vs Andrew.
   const voters = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
   const sides = [{ key: "combined", name: "Neely-Stevenson" }, ...voters.map((p) => ({ key: p.key, name: p.name }))];
   const [leftKey, setLeftKey] = useState("claire");
   const [rightKey, setRightKey] = useState("andrew");
+  // "Everyone" averages every voter equally by default; toggle people off to see
+  // what a subset of the family thinks. Each chip carries the person's vote count,
+  // because someone with 6 votes moves the average as hard as someone with 200.
+  const [who, setWho] = useState(null);            // null = everyone
+  const whoSet = who || voters.map((p) => p.key);
+  const toggleWho = (k) => setWho(() => {
+    const cur = whoSet.includes(k) ? whoSet.filter((x) => x !== k) : [...whoSet, k];
+    return cur.length ? cur : whoSet;              // never let the list go empty
+  });
+  const voteCount = (k) => ((data.boy[k] || {}).votes || 0) + ((data.girl[k] || {}).votes || 0);
   const sideValid = (k) => sides.some((s) => s.key === k);
   const lk = sideValid(leftKey) ? leftKey : (sides[0] ? sides[0].key : null);
   const rk = sideValid(rightKey) ? rightKey : (sides.find((s) => s.key !== lk) || sides[0] || {}).key;
   const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage notes/vetoes on the couple's ranking only
   const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : k === "mine" ? pColor(profile) : C.clay);
-  const sideColor = (k) => (k === "combined" ? C.teal : isOwner(k) ? pColor(k) : C.clay);
+  const sideColor = (k) => (k === "combined" ? C.teal : pColor(k));
   const PickRow = ({ label, sel, onPick }) => (
     <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
-      <span style={{ fontSize:12, fontWeight:700, color:C.muted, width:40 }}>{label}</span>
+      <span style={{ fontSize:T.meta, fontWeight:700, color:C.muted, width:40 }}>{label}</span>
       {sides.map((s) => (
-        <button key={s.key} onClick={() => onPick(s.key)} className="lift" style={{ padding:"4px 11px", borderRadius:999, fontSize:13, fontWeight:700, border:`1px solid ${sel === s.key ? "transparent" : C.line}`,
+        <button key={s.key} onClick={() => onPick(s.key)} className="lift" style={{ padding:"4px 11px", borderRadius:999, fontSize:T.body, fontWeight:700, border:`1px solid ${sel === s.key ? "transparent" : C.line}`,
           ...(sel === s.key ? { background: sideColor(s.key), color:"#fff" } : { background:C.paper, color:C.muted }) }}>{s.name}</button>
       ))}
     </div>
@@ -6033,27 +6215,44 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
     <div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
         {options.map((o) => (
-          <button key={o.key} onClick={() => setMode(o.key)} className="lift" style={{ flex:"1 1 auto", padding:"7px 12px", borderRadius:8, fontSize:14, fontWeight:700,
+          <button key={o.key} onClick={() => setMode(o.key)} className="lift" style={{ flex:"1 1 auto", padding:"7px 12px", borderRadius:8, fontSize:T.body, fontWeight:700,
             ...(mode === o.key ? { background: tabColor(o.key), color:"#fff" } : { color:C.muted }) }}>{o.key === profile ? `${o.name} (you)` : o.name}</button>
         ))}
       </div>
+      {mode === "everyone" && voters.length > 0 && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:S.xs, alignItems:"center", marginBottom:S.md }}>
+          <span style={{ ...LABEL, color:C.muted, marginRight:S.xs }}>Counting</span>
+          {voters.map((v) => {
+            const on = whoSet.includes(v.key);
+            return (
+              <button key={v.key} onClick={() => toggleWho(v.key)} className="lift"
+                title={`${on ? "Leave out" : "Include"} ${v.name}`}
+                style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 11px", borderRadius:R.pill, fontSize:T.meta, fontWeight:700,
+                  border:`1px solid ${on ? "transparent" : C.line}`,
+                  ...(on ? { background:pColor(v.key), color:"#fff" } : { background:C.paper, color:C.muted }) }}>
+                {v.name}<span style={{ opacity:0.65, fontWeight:600 }}>{voteCount(v.key)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {mode === "compare" ? (
         voters.length === 0 ? (
           <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-            <p style={{ fontSize:14, margin:0 }}>No one has voted yet. Once someone casts a vote you can compare two rankings side by side.</p>
+            <p style={{ fontSize:T.body, margin:0 }}>No one has voted yet. Once someone casts a vote you can compare two rankings side by side.</p>
           </div>
         ) : (<>
           <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
             <PickRow label="Left" sel={lk} onPick={setLeftKey} />
             <PickRow label="Right" sel={rk} onPick={setRightKey} />
           </div>
-          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Each ranking top-to-bottom, side by side. Names you <b style={{ color:C.sage }}>both rank highly</b> are outlined in green.</p>
+          <p style={{ fontSize:T.micro, color:C.muted, margin:"0 0 12px" }}>Each ranking top-to-bottom, side by side. Names you <b style={{ color:C.sage }}>both rank highly</b> are outlined in green.</p>
           <CompareGender gender="girl" title="Girls" data={data} leftKey={lk} rightKey={rk} />
           <CompareGender gender="boy" title="Boys" data={data} leftKey={lk} rightKey={rk} />
         </>)
       ) : mode === "mine" ? (
         <>
-          <p style={{ fontSize:11.5, color:C.muted, margin:"0 0 12px" }}>Your own ranking. Drag the <b>≡</b> handle to reorder — voting can still nudge things afterward.</p>
+          <p style={{ fontSize:T.micro, color:C.muted, margin:"0 0 12px" }}>Your own ranking. Drag the <b>≡</b> handle to reorder — voting can still nudge things afterward.</p>
           <div className="twocol">
             <MyRankColumn gender="girl" title="Girls" data={data} profile={profile} onReorder={onReorder} />
             <MyRankColumn gender="boy" title="Boys" data={data} profile={profile} onReorder={onReorder} />
@@ -6061,8 +6260,8 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
         </>
       ) : (
         <div className="twocol">
-          <GenderRankColumn gender="girl" title="Girls" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
-          <GenderRankColumn gender="boy" title="Boys" mode={mode} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+          <GenderRankColumn gender="girl" title="Girls" mode={mode} who={whoSet} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
+          <GenderRankColumn gender="boy" title="Boys" mode={mode} who={whoSet} data={data} profile={profile} readOnly={readOnly} notes={notes} onSetNote={onSetNote} onUnveto={onUnveto} onVeto={onVeto} onClaim={onClaim} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
         </div>
       )}
       {isOwner(profile) && <ManageNames data={data} profile={profile} onVeto={onVeto} onUnveto={onUnveto} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />}
@@ -6084,7 +6283,7 @@ function CompareGender({ gender, title, data, leftKey, rightKey }) {
       return { label: "Neely-Stevenson", ratings: r, vetoed: [...(c.vetoed || []), ...(a.vetoed || [])], voted: cVoted || aVoted, color: C.teal };
     }
     const pg = data[gender][key];
-    return { label: data.profiles[key] || key, ratings: pg ? pg.ratings : {}, vetoed: pg ? (pg.vetoed || []) : [], voted: !!(pg && pg.votes > 0), color: isOwner(key) ? pColor(key) : C.clay };
+    return { label: data.profiles[key] || key, ratings: pg ? pg.ratings : {}, vetoed: pg ? (pg.vetoed || []) : [], voted: !!(pg && pg.votes > 0), color: pColor(key) };
   };
   const L = sideOf(leftKey), R = sideOf(rightKey);
   const benched = new Set([...(c.vetoed || []), ...(a.vetoed || []), ...L.vetoed, ...R.vetoed]);
@@ -6096,15 +6295,15 @@ function CompareGender({ gender, title, data, leftKey, rightKey }) {
   const big = Math.max(3, Math.ceil(live.length / 3));
   const Column = ({ side, list }) => (
     <div style={{ flex:1, minWidth:0 }}>
-      <div style={{ fontSize:11, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em", color: side.color, marginBottom:6, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{side.label}</div>
+      <div style={{ fontSize:T.micro, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em", color: side.color, marginBottom:6, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{side.label}</div>
       <ol style={{ display:"flex", flexDirection:"column", gap:5 }}>
         {list.map((n, i) => {
           // Highlight shared favorites: both rank it similarly AND at least one ranks it high.
           const agree = Math.abs(lPos[n.id] - rPos[n.id]) < big && Math.min(lPos[n.id], rPos[n.id]) < big;
           return (
             <li key={n.id} style={{ display:"flex", alignItems:"baseline", gap:7, borderRadius:9, padding:"6px 9px", background: agree ? `${C.sage}14` : C.paper, border:`1px solid ${agree ? C.sage : C.line}` }}>
-              <span className="disp" style={{ fontSize:13, fontWeight:700, color:C.muted, minWidth:16 }}>{i + 1}</span>
-              <span className="disp" style={{ fontSize:15, fontWeight:700, color:C.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{n.name}</span>
+              <span className="disp" style={{ fontSize:T.body, fontWeight:700, color:C.muted, minWidth:16 }}>{i + 1}</span>
+              <span className="disp" style={{ fontSize:T.name, fontWeight:700, color:C.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{n.name}</span>
             </li>
           );
         })}
@@ -6115,11 +6314,11 @@ function CompareGender({ gender, title, data, leftKey, rightKey }) {
   return (
     <div style={{ marginBottom:20 }}>
       <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
-        <h3 className="disp" style={{ margin:0, fontSize:20, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
+        <h3 className="disp" style={{ margin:0, fontSize:T.title, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
       </div>
       {notReady ? (
         <div style={{ borderRadius:12, padding:"36px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-          <p style={{ fontSize:14, margin:0 }}>{notReady} hasn’t voted on the {gender === "boy" ? "boys" : "girls"} yet.</p>
+          <p style={{ fontSize:T.body, margin:0 }}>{notReady} hasn’t voted on the {gender === "boy" ? "boys" : "girls"} yet.</p>
         </div>
       ) : (
         <div style={{ display:"flex", gap:10 }}>
@@ -6172,11 +6371,11 @@ function MyRankColumn({ gender, title, data, profile, onReorder }) {
   return (
     <div style={{ flex:1, minWidth:0 }}>
       <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
-        <h3 className="disp" style={{ margin:0, fontSize:20, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
+        <h3 className="disp" style={{ margin:0, fontSize:T.title, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
       </div>
       {!cur.votes ? (
         <div style={{ borderRadius:12, padding:"36px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-          <p style={{ fontSize:14, margin:0 }}>Vote on a few {gender === "boy" ? "boys" : "girls"} first, then drag to fine-tune your order.</p>
+          <p style={{ fontSize:T.body, margin:0 }}>Vote on a few {gender === "boy" ? "boys" : "girls"} first, then drag to fine-tune your order.</p>
         </div>
       ) : (
         <ol style={{ display:"flex", flexDirection:"column", gap:5 }}>
@@ -6191,8 +6390,8 @@ function MyRankColumn({ gender, title, data, profile, onReorder }) {
                 <button onPointerDown={(e) => down(e, n.id)} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
                   aria-label={`Drag ${n.name} to reorder`} title="Drag to reorder"
                   style={{ display:"flex", touchAction:"none", cursor:"grab", color:C.muted, padding:2 }}><Ic n="list" s={16} /></button>
-                <span className="disp" style={{ fontSize:14, fontWeight:700, color:C.muted, minWidth:18 }}>{i + 1}</span>
-                <span className="disp" style={{ flex:1, minWidth:0, fontSize:16, fontWeight:700, color:C.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{n.name}</span>
+                <span className="disp" style={{ fontSize:T.body, fontWeight:700, color:C.muted, minWidth:18 }}>{i + 1}</span>
+                <span className="disp" style={{ flex:1, minWidth:0, fontSize:T.name, fontWeight:700, color:C.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{n.name}</span>
               </li>
             );
           })}
@@ -6201,23 +6400,25 @@ function MyRankColumn({ gender, title, data, profile, onReorder }) {
     </div>
   );
 }
-function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes, onSetNote, onUnveto, onVeto, onClaim, onAddNick, onRemoveNick }) {
+function GenderRankColumn({ gender, title, mode, who, data, profile, readOnly, notes, onSetNote, onUnveto, onVeto, onClaim, onAddNick, onRemoveNick }) {
   notes = notes || {};
-  const addnicks = data.addnicks || {};
   const names = namesFor(gender, data.custom, data.removed);
   const cR = data[gender].claire.ratings, aR = data[gender].andrew.ratings;
   const cVeto = data[gender].claire.vetoed, aVeto = data[gender].andrew.vetoed;
   const cRank = ranksOf(cR, names), aRank = ranksOf(aR, names);
   const splitGap = Math.ceil(names.length / 3);
   const isCombined = mode === "combined";
-  const isEveryone = mode === "everyone";          // family aggregate (guests only, no owners)
+  const isEveryone = mode === "everyone";          // an average over whichever voters are toggled on
   const isPerson = !isCombined && !isEveryone;
   const sel = isPerson ? data[gender][mode] : null; // the single voter being viewed
   // the current viewer's own vetoes (for editing on the couple's ranking)
   const myVeto = isOwner(profile) ? (data[gender][profile].vetoed || []) : [];
   const guestKeys = data.roster.filter((p) => !isOwner(p.key)).map((p) => p.key);
-  const votedGuests = guestKeys.filter((k) => data[gender][k].votes > 0);
-  // Family/friends who hard-passed a name (their veto shows as "can't stand it", not a removal).
+  // Who the "Everyone" average runs over: the caller's selection, narrowed to people
+  // who actually voted in THIS gender (someone who only did boys shouldn't flatten
+  // the girls' list toward the 1500 start rating).
+  const votedGuests = (who || data.roster.map((r) => r.key)).filter((k) => data[gender][k] && data[gender][k].votes > 0);
+  // Family/friends who passed on a name (shown as "passed on this", not a removal).
   const hatersOf = (id) => guestKeys.filter((k) => (data[gender][k].vetoed || []).includes(id)).map((k) => data.profiles[k] || k);
   // Average only family members who actually rated this name (don't pad non-raters
   // with the START default, which would drag every score toward 1500).
@@ -6280,33 +6481,33 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
   return (
     <div style={{ flex:1, minWidth:0 }}>
       <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
-        <h3 className="disp" style={{ margin:0, fontSize:20, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
+        <h3 className="disp" style={{ margin:0, fontSize:T.title, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
       </div>
       {noData ? (
         <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-          <p style={{ fontSize:14, margin:0 }}>{emptyMsg}</p>
+          <p style={{ fontSize:T.body, margin:0 }}>{emptyMsg}</p>
         </div>
       ) : (<>
-      <p style={{ fontSize:12, marginBottom:12, color:C.muted }}>
+      <p style={{ fontSize:T.meta, marginBottom:12, color:C.muted }}>
         {isCombined
           ? (combineBoth
               ? `Your combined ranking.`
               : `Only ${cVoted ? "Claire" : "Andrew"} has voted so far. Showing their ratings alone; the combined ranking appears once you’ve both voted.`)
           : isEveryone
-            ? `Average of ${votedGuests.length} family member${votedGuests.length === 1 ? "" : "s"}’ ratings (Claire and Andrew not included).`
+            ? `Everyone’s ratings, averaged equally — ${fmtNames(votedGuests.map((k) => data.profiles[k] || k))}.`
             : `${data.profiles[mode]}’s ratings.`}
       </p>
       <ol style={{ display:"flex", flexDirection:"column", gap:6 }}>
         {live.map((r, i) => (
           <RankRow key={r.n.id} r={r} rank={liveRanks[i]} n={live.length} showCombo={isCombined} gender={gender} max={max} min={min}
             profile={profile} readOnly={readOnly} onVeto={(id) => onVeto(gender, profile, id)} onClaim={onClaim} notes={notes} onSetNote={onSetNote}
-            added={addedNicksFor(addnicks, gender, r.n.id)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} reserveHaters={anyHaters}
+            onAddNick={onAddNick} onRemoveNick={onRemoveNick} haters={hatersOf(r.n.id)} reserveHaters={anyHaters}
             iHardPassed={!isOwner(profile) && (data[gender][profile].vetoed || []).includes(r.n.id)} onUnpass={() => onUnveto(gender, profile, r.n.id)} />
         ))}
       </ol>
       {unvoted.length > 0 && (
         <div style={{ marginTop:20 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, color:C.muted }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:T.micro, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, color:C.muted }}>
             <Ic n="list" s={12} /> Not yet voted on
           </div>
           <ul style={{ display:"flex", flexDirection:"column", gap:6 }}>
@@ -6315,11 +6516,11 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
               return (
                 <li key={r.n.id} style={{ borderRadius:12, padding:"8px 12px", display:"flex", alignItems:"center", gap:12, background:C.paper, border:`1px dashed ${C.line}`, opacity:0.85 }}>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <span className="disp" style={{ fontSize:16, fontWeight:700, color:C.ink }}>{r.n.name}</span>
-                    {attr.kind === "guest" && <span style={{ fontSize:10, marginLeft:8, color:C.sage }}>added by {attr.name}</span>}
+                    <span className="disp" style={{ fontSize:T.name, fontWeight:700, color:C.ink }}>{r.n.name}</span>
+                    {attr.kind === "guest" && <span style={{ fontSize:T.micro, marginLeft:8, color:C.sage }}>added by {attr.name}</span>}
                   </div>
                   {attr.kind === "unknown" && (
-                    <button onClick={() => onClaim(r.n.id)} className="lift" style={{ fontSize:11, fontWeight:700, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.teal, whiteSpace:"nowrap" }}>claim this contribution</button>
+                    <button onClick={() => onClaim(r.n.id)} className="lift" style={{ fontSize:T.micro, fontWeight:700, padding:"4px 8px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.teal, whiteSpace:"nowrap" }}>claim this contribution</button>
                   )}
                 </li>
               );
@@ -6329,18 +6530,18 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
       )}
       {dead.length > 0 && (
         <div style={{ marginTop:20 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, color:C.clay }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:T.micro, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, color:C.clay }}>
             <Ic n="ban" s={12} /> Vetoed
           </div>
           <ul style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {dead.map((r) => (
               <li key={r.n.id} style={{ borderRadius:12, padding:"8px 12px", display:"flex", alignItems:"center", gap:12, background:C.paper, border:`1px dashed ${C.line}`, opacity:0.85 }}>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <span className="disp" style={{ fontSize:16, fontWeight:700, color:C.muted, textDecoration:"line-through" }}>{r.n.name}</span>
-                  <span style={{ fontSize:10, marginLeft:8, color:C.clay }}>vetoed by {vetoLabel(r.n.id)}</span>
+                  <span className="disp" style={{ fontSize:T.name, fontWeight:700, color:C.muted, textDecoration:"line-through" }}>{r.n.name}</span>
+                  <span style={{ fontSize:T.micro, marginLeft:8, color:C.clay }}>vetoed by {vetoLabel(r.n.id)}</span>
                 </div>
                 {!readOnly && myVeto.includes(r.n.id) && (
-                  <button onClick={() => onUnveto(gender, profile, r.n.id)} className="lift" style={{ fontSize:12, padding:"4px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>unveto</button>
+                  <button onClick={() => onUnveto(gender, profile, r.n.id)} className="lift" style={{ fontSize:T.meta, padding:"4px 8px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.sage }}>Bring back</button>
                 )}
               </li>
             ))}
@@ -6356,38 +6557,17 @@ function GenderRankColumn({ gender, title, mode, data, profile, readOnly, notes,
 // One name in the Manage panel: name + veto/remove, plus an inline nickname
 // editor. `added` is the list of user-added nicks for this name (the only ones
 // with a remove ✕); base nicks show without one. Anyone can add a nickname.
-function NameChip({ n, added, gender, profile, onVeto, onAddNick, onRemoveNick }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState("");
-  const addedSet = new Set((added || []).map((x) => x.toLowerCase()));
-  const submit = () => { const v = val.trim(); if (v) onAddNick(gender, n.id, v); setVal(""); setEditing(false); };
+function NameChip({ n, gender, profile, onVeto, onAddNick, onRemoveNick }) {
   return (
     <li style={{ display:"flex", flexDirection:"column", gap:5, borderRadius:12, padding:"6px 8px 7px 12px", background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-        <span style={{ fontSize:13, fontWeight:600, color:C.ink }}>{n.name}</span>
-        {n.custom && <span style={{ fontSize:9, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{(n.byName && !isOwner(n.by)) ? `added by ${n.byName}` : "added"}</span>}
+        <NameText id={n.id} name={n.name} style={{ fontSize:T.body, fontWeight:600, color:C.ink }} iconSize={11} />
+        {n.custom && <span style={{ fontSize:T.micro, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>{(n.byName && !isOwner(n.by)) ? `added by ${n.byName}` : "added"}</span>}
         <span style={{ flex:1 }} />
         <button onClick={() => onVeto(gender, profile, n.id)} className="lift" aria-label={`Veto ${n.name}`} title="Veto — takes it out for both of you"
-          style={{ display:"flex", alignItems:"center", padding:2, borderRadius:999, color:C.clay }}><Ic n="ban" s={13} /></button>
+          style={{ display:"flex", alignItems:"center", padding:2, borderRadius:R.card, color:C.clay }}><Ic n="ban" s={13} /></button>
       </div>
-      <div style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap" }}>
-        {(n.nicks || []).map((nk) => (
-          <span key={nk} style={{ display:"flex", alignItems:"center", gap:3, fontSize:11, padding:"1px 8px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.muted }}>
-            {nk}
-            {addedSet.has(nk.toLowerCase()) && (
-              <button onClick={() => onRemoveNick(gender, n.id, nk)} className="lift" aria-label={`Remove nickname ${nk}`} title="Remove this nickname"
-                style={{ display:"flex", color:C.clay, padding:0 }}><Ic n="x" s={9} /></button>
-            )}
-          </span>
-        ))}
-        {editing
-          ? <input autoFocus value={val} onChange={(e) => setVal(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") submit(); else if (e.key === "Escape") { setEditing(false); setVal(""); } }}
-              onBlur={submit} placeholder="nickname"
-              style={{ fontSize:11, padding:"2px 7px", borderRadius:999, border:`1px solid ${C.sage}`, width:84, background:C.paper, color:C.ink }} />
-          : <button onClick={() => setEditing(true)} className="lift" title="Add a nickname (anyone can)"
-              style={{ fontSize:11, fontWeight:700, padding:"1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage }}>add nickname</button>}
-      </div>
+      <NickEditor id={n.id} nicks={n.nicks} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={gender} />
     </li>
   );
 }
@@ -6405,28 +6585,28 @@ function ManageNames({ data, profile, onVeto, onUnveto, onAddNick, onRemoveNick 
     return (
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:8 }}>
-          <h4 className="disp" style={{ margin:0, fontSize:15, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h4>
-          <span style={{ fontSize:12, color:C.muted }}>{active.length}{vetoed.length ? ` · ${vetoed.length} vetoed` : ""}</span>
+          <h4 className="disp" style={{ margin:0, fontSize:T.name, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h4>
+          <span style={{ fontSize:T.meta, color:C.muted }}>{active.length}{vetoed.length ? ` · ${vetoed.length} vetoed` : ""}</span>
         </div>
         <ul style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
           {active.map((n) => (
-            <NameChip key={n.id} n={n} added={addedNicksFor(data.addnicks, gender, n.id)} gender={gender} profile={profile}
+            <NameChip key={n.id} n={n} gender={gender} profile={profile}
               onVeto={onVeto} onAddNick={onAddNick} onRemoveNick={onRemoveNick} />
           ))}
         </ul>
         {vetoed.length > 0 && (
           <div style={{ marginTop:10 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, color:C.clay }}>
+            <div style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.micro, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, color:C.clay }}>
               <Ic n="ban" s={11} /> Vetoed
             </div>
             <ul style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
               {vetoed.map((n) => (
-                <li key={n.id} style={{ display:"flex", alignItems:"center", gap:6, borderRadius:999, padding:"4px 6px 4px 12px", background:C.paper, border:`1px dashed ${C.line}` }}>
-                  <span style={{ fontSize:13, fontWeight:600, color:C.muted, textDecoration:"line-through" }}>{n.name}</span>
-                  <span style={{ fontSize:10, color:C.clay }}>{vetoedBy(n.id).join(" & ")}</span>
+                <li key={n.id} style={{ display:"flex", alignItems:"center", gap:6, borderRadius:R.card, padding:"4px 6px 4px 12px", background:C.paper, border:`1px dashed ${C.line}` }}>
+                  <span style={{ fontSize:T.body, fontWeight:600, color:C.muted, textDecoration:"line-through" }}>{n.name}</span>
+                  <span style={{ fontSize:T.micro, color:C.clay }}>{vetoedBy(n.id).join(" & ")}</span>
                   {myVeto.includes(n.id) && (
                     <button onClick={() => onUnveto(gender, profile, n.id)} className="lift" title="Remove your veto"
-                      style={{ fontSize:11, padding:"2px 8px", borderRadius:999, border:`1px solid ${C.line}`, color:C.sage }}>unveto</button>
+                      style={{ fontSize:T.micro, padding:"2px 8px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.sage }}>Bring back</button>
                   )}
                 </li>
               ))}
@@ -6439,12 +6619,12 @@ function ManageNames({ data, profile, onVeto, onUnveto, onAddNick, onRemoveNick 
   return (
     <div style={{ marginTop:26, borderTop:`1px solid ${C.line}`, paddingTop:16 }}>
       <button onClick={() => setOpen((o) => !o)} className="lift"
-        style={{ display:"flex", alignItems:"center", gap:6, fontSize:13, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:C.muted }}>
+        style={{ display:"flex", alignItems:"center", gap:6, fontSize:T.body, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:C.muted }}>
         <Ic n="list" s={15} /> Manage names {open ? "▾" : "▸"}
       </button>
       {open && (
         <div style={{ marginTop:12 }}>
-          <p style={{ fontSize:12, marginBottom:12, color:C.muted, lineHeight:1.55 }}>
+          <p style={{ fontSize:T.meta, marginBottom:12, color:C.muted, lineHeight:1.55 }}>
             <b style={{ color:C.clay }}>Veto</b> (⊘) takes a name out of the running for both of you and shows who said no; the other person can still see it under Vetoed. Unveto it there anytime. <b style={{ color:C.sage }}>Add nickname</b> adds a nickname to any name — anyone can, no matter who added it. Add names with the “+ Add name” button up top.
           </p>
           <div className="twocol"><Col title="Girls" gender="girl" /><Col title="Boys" gender="boy" /></div>
@@ -6518,7 +6698,7 @@ function TrendChart({ lines, xUnit = "votes", emph = null, endLabels = false }) 
         })()}
       </svg>
       {hx != null && (
-        <div style={{ position:"absolute", top:8, left:48, background:C.bg, border:`1px solid ${C.line}`, borderRadius:8, padding:"6px 8px", fontSize:11, pointerEvents:"none" }}>
+        <div style={{ position:"absolute", top:8, left:48, background:C.bg, border:`1px solid ${C.line}`, borderRadius:8, padding:"6px 8px", fontSize:T.micro, pointerEvents:"none" }}>
           <div style={{ color:C.muted, marginBottom:2 }}>after {hx} {xUnit} · highest first</div>
           {[...lines].sort((a, b) => (valAt(b, hx) ?? 0) - (valAt(a, hx) ?? 0)).map((l) => (
             <div key={l.id} style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -6534,7 +6714,7 @@ function TrendChart({ lines, xUnit = "votes", emph = null, endLabels = false }) 
 const trendEmpty = (msg) => (
   <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
     <div style={{ marginBottom:8, display:"flex", justifyContent:"center" }}><Ic n="trend" s={26} c={C.line} /></div>
-    <p style={{ fontSize:14, margin:0 }}>{msg}</p>
+    <p style={{ fontSize:T.body, margin:0 }}>{msg}</p>
   </div>
 );
 function ByNameTrends({ pg, names, profileName, gender }) {
@@ -6557,19 +6737,19 @@ function ByNameTrends({ pg, names, profileName, gender }) {
   const dashStyle = (d) => (d == null ? "solid" : d === "1.5 4" ? "dotted" : "dashed");
   return (
     <div>
-      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
+      <p style={{ fontSize:T.meta, marginBottom:8, color:C.muted }}>
         {profileName}’s combined ranking over {pg.votes} votes.
       </p>
       <TrendChart lines={lines} emph={emph} endLabels />
       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
         <button onClick={() => setSel(ranked.slice(0, 5).map((n) => n.id))} className="lift"
-          style={{ fontSize:12, padding:"4px 12px", borderRadius:999, fontWeight:700, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>Top 5</button>
+          style={{ fontSize:T.meta, padding:"4px 12px", borderRadius:R.card, fontWeight:700, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>Top 5</button>
         {ranked.map((n, i) => {
           const on = sel.includes(n.id); const st = styleOf(n.id);
           return (
             <button key={n.id} onClick={() => toggle(n.id)} onDoubleClick={() => setSel([n.id])}
               onMouseEnter={() => on && setEmph(n.id)} onMouseLeave={() => setEmph((e) => (e === n.id ? null : e))}
-              className="lift" style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600, border:"1px solid transparent",
+              className="lift" style={{ display:"flex", alignItems:"center", gap:6, fontSize:T.meta, padding:"4px 10px", borderRadius:R.card, fontWeight:600, border:"1px solid transparent",
               ...(on ? { background: st.color, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>
               <span style={{ opacity:0.6, fontWeight:700 }}>{i + 1}</span>
               {n.name}
@@ -6577,41 +6757,6 @@ function ByNameTrends({ pg, names, profileName, gender }) {
             </button>
           );
         })}
-      </div>
-    </div>
-  );
-}
-function CompareTrends({ data, gender, names }) {
-  const roster = data.roster;
-  const pgOf = (key) => data[gender][key];
-  const totalFor = (id) => roster.reduce((s, p) => s + (pgOf(p.key).ratings[id] ?? START), 0);
-  const ranked = [...names].sort((a, b) => totalFor(b.id) - totalFor(a.id));
-  const [pick, setPick] = useState(() => (ranked[0] ? ranked[0].id : null));
-  if (!roster.some((p) => pgOf(p.key).votes > 0)) return trendEmpty("Vote on some names to compare everyone’s trends here.");
-  const id = pick && names.some((n) => n.id === pick) ? pick : ranked[0].id;
-  const lineFor = (pg) => [{ x: 0, y: START }, ...pg.history.map((h) => ({ x: h.m, y: h.r[id] ?? START }))];
-  // Owners get a solid line in their color; guests get a dashed line from the palette.
-  let gi = 0;
-  const lines = roster.filter((p) => pgOf(p.key).history.length).map((p) => {
-    const owner = isOwner(p.key);
-    return { id: p.key, name: p.name, color: owner ? pColor(p.key) : LINE_COLORS[gi++ % LINE_COLORS.length], dash: !owner, points: lineFor(pgOf(p.key)) };
-  });
-  return (
-    <div>
-      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>
-How everyone rates <b style={{ color:C.ink }}>{findName(names, id).name}</b> over time. You, Andrew, and family each get a line. Pick a name below.
-      </p>
-      <TrendChart lines={lines} endLabels />
-      <div style={{ display:"flex", gap:14, marginTop:8, fontSize:11, color:C.muted, flexWrap:"wrap" }}>
-        {lines.map((l) => (
-          <span key={l.id} style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:18, height:0, borderTop:`2px ${l.dash ? "dashed" : "solid"} ${l.color}` }} /> {l.name}</span>
-        ))}
-      </div>
-      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
-        {ranked.map((n) => (
-          <button key={n.id} onClick={() => setPick(n.id)} className="lift" style={{ fontSize:12, padding:"4px 10px", borderRadius:999, fontWeight:600, border:"1px solid transparent",
-            ...(n.id === id ? { background: C.sage, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>{n.name}</button>
-        ))}
       </div>
     </div>
   );
@@ -6652,7 +6797,7 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
           );
         })}
       </svg>
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:11, fontWeight:700 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:T.micro, fontWeight:700 }}>
         <span style={{ color:xColor }}>{xName}</span>
         <span style={{ flex:1, height:8, borderRadius:999, background:`linear-gradient(to right, ${xColor}, ${midColor}, ${yColor})` }} />
         <span style={{ color:yColor }}>{yName}</span>
@@ -6660,32 +6805,65 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
     </div>
   );
 }
-function AgreementView({ data, gender, names }) {
-  const c = data[gender].claire, a = data[gender].andrew;
-  if (!c.votes || !a.votes) return trendEmpty("Once you and Andrew have both voted, this maps where you agree and where you clash.");
-  const xr = ranksOf(c.ratings, names), yr = ranksOf(a.ratings, names);
-  return (
-    <div>
-      <ScatterCompare names={names} xr={xr} yr={yr} xName="Neely" yName="Stevenson" xColor={C.claire} yColor={C.andrew} />
+// One scatter, any two sides. This replaces the separate "Neely vs Stevenson" and
+// "Fam vs Neely-Stevenson" views, which were the same component wired to fixed
+// inputs — now you pick both ends, so you can also ask "me vs my sister".
+function ScatterView({ data, gender, names }) {
+  const voted = (k) => data[gender][k] && data[gender][k].votes > 0;
+  const guests = data.roster.filter((p) => !isOwner(p.key) && voted(p.key)).map((p) => p.key);
+  const sides = [
+    { key:"us",  name:"Us",             color:"#E3B23C", ok: voted("claire") || voted("andrew") },
+    { key:"fam", name:"Fam & friends",  color:"#3F6CA3", ok: guests.length > 0 },
+    ...data.roster.filter((p) => voted(p.key)).map((p) => ({ key:p.key, name:p.name, color:pColor(p.key), ok:true })),
+  ].filter((x) => x.ok);
+  const [xKey, setXKey] = useState("claire");
+  const [yKey, setYKey] = useState("andrew");
+  const has = (k) => sides.some((x) => x.key === k);
+  const xk = has(xKey) ? xKey : (sides[0] || {}).key;
+  const yk = has(yKey) && yKey !== xk ? yKey : (sides.find((x) => x.key !== xk) || {}).key;
+  if (sides.length < 2) return trendEmpty("Once two of you have voted, this maps where you agree and where you clash.");
+  // Ratings for one side: an individual's own, or an equal-weight average of a group.
+  const ratingsFor = (key) => {
+    if (key === "us") {
+      const c = data[gender].claire, a = data[gender].andrew;
+      const both = c.votes > 0 && a.votes > 0;
+      const out = {}; names.forEach((n) => {
+        out[n.id] = both ? ((c.ratings[n.id] ?? START) + (a.ratings[n.id] ?? START)) / 2
+                         : ((c.votes > 0 ? c.ratings[n.id] : a.ratings[n.id]) ?? START); });
+      return out;
+    }
+    if (key === "fam") {
+      const out = {}; names.forEach((n) => {
+        const rs = guests.filter((k) => data[gender][k].ratings[n.id] != null);
+        out[n.id] = rs.length ? rs.reduce((t, k) => t + data[gender][k].ratings[n.id], 0) / rs.length : START; });
+      return out;
+    }
+    return data[gender][key].ratings;
+  };
+  const side = (k) => sides.find((x) => x.key === k) || {};
+  const Pick = ({ label, sel, onPick, other }) => (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:S.xs, alignItems:"center" }}>
+      <span style={{ ...LABEL, color:C.muted, minWidth:48 }}>{label}</span>
+      {sides.filter((x) => x.key !== other).map((x) => (
+        <button key={x.key} onClick={() => onPick(x.key)} className="lift"
+          style={{ padding:"4px 11px", borderRadius:R.pill, fontSize:T.meta, fontWeight:700, border:`1px solid ${sel === x.key ? "transparent" : C.line}`,
+            ...(sel === x.key ? { background:x.color, color:"#fff" } : { background:C.paper, color:C.muted }) }}>{x.name}</button>
+      ))}
     </div>
   );
-}
-function FamVsUsView({ data, gender, names }) {
-  const c = data[gender].claire, a = data[gender].andrew;
-  const voted = data.roster.filter((p) => !isOwner(p.key)).map((p) => p.key).filter((k) => data[gender][k].votes > 0);
-  if ((!c.votes && !a.votes) || !voted.length) return trendEmpty("Once you two and at least one family member have voted, this shows where the family differs from you.");
-  const couple = {}, fam = {};
-  names.forEach((n) => {
-    const cr = c.ratings[n.id] ?? START, ar = a.ratings[n.id] ?? START;
-    couple[n.id] = (c.votes && a.votes) ? (cr + ar) / 2 : (c.votes ? cr : ar);
-    fam[n.id] = voted.reduce((s, k) => s + (data[gender][k].ratings[n.id] ?? START), 0) / voted.length;
-  });
-  const xr = ranksOf(couple, names), yr = ranksOf(fam, names);
-  const coupleColor = "#E3B23C", famColor = "#3F6CA3"; // yellow = Andrew & Claire, blue = fam & friends, green = overlap
+  const xr = ranksOf(ratingsFor(xk), names), yr = ranksOf(ratingsFor(yk), names);
   return (
     <div>
-      <p style={{ fontSize:12, marginBottom:8, color:C.muted }}>Each name by <b style={{ color:coupleColor }}>Andrew &amp; Claire</b>’s combined rank (further right = they love it) and the <b style={{ color:famColor }}>fam &amp; friends</b>’ rank (higher = they love it).</p>
-      <ScatterCompare names={names} xr={xr} yr={yr} xName="Andrew &amp; Claire" yName="Fam &amp; friends" xLabel="Andrew and Claire love" yLabel="Fam &amp; friends love" xColor={coupleColor} yColor={famColor} midColor={C.sage} />
+      <div style={{ display:"flex", flexDirection:"column", gap:S.xs, marginBottom:S.md }}>
+        <Pick label="Across" sel={xk} onPick={setXKey} other={yk} />
+        <Pick label="Up" sel={yk} onPick={setYKey} other={xk} />
+      </div>
+      <p style={{ fontSize:T.meta, marginBottom:S.sm, color:C.muted }}>
+        Each name by <b style={{ color:side(xk).color }}>{side(xk).name}</b>’s rank (further right = they love it) and <b style={{ color:side(yk).color }}>{side(yk).name}</b>’s (higher = they love it). Green means you agree.
+      </p>
+      <ScatterCompare names={names} xr={xr} yr={yr} xName={side(xk).name} yName={side(yk).name}
+        xLabel={`${side(xk).name} loves`} yLabel={`${side(yk).name} loves`}
+        xColor={side(xk).color} yColor={side(yk).color} midColor={C.sage} />
     </div>
   );
 }
@@ -6714,22 +6892,20 @@ function Trends({ data, profile }) {
   // Drop names vetoed by either owner; vetoed names shouldn't appear anywhere in Trends.
   const vetoed = new Set([...data[g].claire.vetoed, ...data[g].andrew.vetoed]);
   const names = namesFor(g, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
-  const modes = [["byName","Compare names"],["compare","Compare voters"],["agree","Neely vs Stevenson"],["fam","Fam and co. vs. Neely-Stevenson"]];
+  const modes = [["byName","Names over time"],["agree","Who likes what"]];
   return (
     <div>
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={setG} active={gColor} />
         <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
           {modes.map(([k, label]) => (
-            <button key={k} onClick={() => setMode(k)} className="lift" style={{ padding:"6px 12px", borderRadius:999, fontSize:13, fontWeight:700, border:"1px solid transparent",
+            <button key={k} onClick={() => setMode(k)} className="lift" style={{ padding:"6px 12px", borderRadius:R.card, fontSize:T.body, fontWeight:700, border:"1px solid transparent",
               ...(mode === k ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>{label}</button>
           ))}
         </div>
       </div>
       {mode === "byName" && <ByNameTrends key={g} gender={g} pg={combinePg(data, g, names)} names={names} profileName={"Claire & Andrew"} />}
-      {mode === "compare" && <CompareTrends data={data} gender={g} names={names} />}
-      {mode === "agree" && <AgreementView data={data} gender={g} names={names} />}
-      {mode === "fam" && <FamVsUsView data={data} gender={g} names={names} />}
+      {mode === "agree" && <ScatterView data={data} gender={g} names={names} />}
     </div>
   );
 }
@@ -6781,7 +6957,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
     if (!pool.length) return cur;
     const np = [...cur]; np[idx] = pool[Math.floor(Math.random() * Math.min(5, pool.length))]; return np;
   });
-  // Hard pass on one name in the Tune pair: hide it for good, keep the other card.
+  // Pass on one name in the Tune pair: hide it for good, keep the other card.
   const passOne = (c) => {
     onDismiss(g, c.id);
     setLastDismissed({ id: c.id, name: c.name }); setReasonText(""); setLastAdded(null);
@@ -6800,16 +6976,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
     setLastDismissed(null); setReasonText("");
   };
 
-  return (
-    <div>
-      <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center", flexWrap:"wrap" }}>
-        <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={(v) => { setG(v); setLastAdded(null); }} active={gColor} />
-      </div>
-
-      {pair && (
-        <div style={{ marginBottom:18, padding:"14px 14px 12px", borderRadius:14, background:gTint(g), border:`1px solid ${C.line}` }}>
-          <div style={{ marginBottom:10 }}>
-            <span style={{ fontSize:13, fontWeight:700, color:C.ink }}>Tune your taste</span>
+  // The taste-tuner used to sit permanently above the list, so the screen opened
+  // with two competing ways to vote. It's now one card INSIDE the list — same
+  // feature, but the suggestions you can actually act on come first.
+  const tuneCard = pair ? (
+        <div style={{ padding:"14px 14px 12px", borderRadius:R.card, background:gTint(g), border:`1px solid ${C.line}` }}>
+          <div style={{ marginBottom:S.sm }}>
+            <span style={{ ...LABEL, color:C.ink }}>Tune your taste</span>
           </div>
           <div style={{ display:"flex", gap:10, alignItems:"stretch" }}>
             {pair.map((c, i) => {
@@ -6819,19 +6992,20 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); react(i === 0 ? "a" : "b"); } }}
                   className="lift"
                   style={{ flex:1, minWidth:0, textAlign:"left", padding:"11px 12px", borderRadius:12, background:C.paper, border:`1px solid ${C.line}`, cursor:"pointer" }}>
-                  <div style={{ fontFamily:DISPLAY, fontSize:21, color:C.ink, lineHeight:1.1 }}>{c.name}</div>
-                  {SAY[c.id] && <div style={{ fontSize:11, color:C.clay, marginTop:2, fontStyle:"italic" }}>“{SAY[c.id]}”</div>}
-                  <div style={{ fontSize:11.5, color:C.muted, margin:"3px 0 0" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
-                  <div style={{ fontSize:10.5, color:C.teal, marginTop:5, fontWeight:600 }}>{ORIGIN_LABEL[f.o] || ""}{f.lean === "u" ? " · unisex" : ""}</div>
+                  <div style={{ fontFamily:DISPLAY, fontSize:T.name, color:C.ink, lineHeight:1.1 }}>{c.name}</div>
+                  {SAY[c.id] && <div style={{ fontSize:T.micro, color:C.clay, marginTop:2, fontStyle:"italic" }}>“{SAY[c.id]}”</div>}
+                  <div style={{ fontSize:T.meta, color:C.muted, margin:"3px 0 0" }}>
+                    {cleanMeaning(MEANING[c.id]) || ""}{f.lean === "u" ? " · unisex" : ""}
+                  </div>
                   <PopLine id={c.id} gender={g} compact noChart />
                   <div style={{ display:"flex", gap:6, marginTop:8 }}>
                     <button onClick={(e) => { e.stopPropagation(); addOne(c); }} aria-label={`Add ${c.name} to voting`}
-                      style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:10.5, fontWeight:700, padding:"5px 6px", borderRadius:8, background:gColor(g), color:"#fff", border:"none" }}>
+                      style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:T.micro, fontWeight:700, padding:"5px 6px", borderRadius:8, background:gColor(g), color:"#fff", border:"none" }}>
                       <Ic n="plus" s={11} c="#fff" /> Add
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); passOne(c); }} aria-label={`Hard pass on ${c.name} — never show it again`}
-                      style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:10.5, fontWeight:600, padding:"5px 6px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.clay }}>
-                      <Ic n="ban" s={11} c={C.clay} /> Hard pass
+                    <button onClick={(e) => { e.stopPropagation(); passOne(c); }} aria-label={`Pass on ${c.name} — never show it again`}
+                      style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:T.micro, fontWeight:600, padding:"5px 6px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.clay }}>
+                      <Ic n="ban" s={11} c={C.clay} /> Pass
                     </button>
                   </div>
                 </div>
@@ -6839,86 +7013,89 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
             })}
           </div>
           <div style={{ display:"flex", gap:8, marginTop:10, justifyContent:"center", flexWrap:"wrap" }}>
-            <button onClick={() => react("love")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:12.5, fontWeight:700, padding:"7px 14px", borderRadius:999, background:C.sage, color:"#fff" }}>
+            <button onClick={() => react("love")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:R.card, background:C.sage, color:"#fff" }}>
               <Ic n="heart" s={13} c="#fff" fill="#fff" /> Love both
             </button>
-            <button onClick={() => react("pass")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:12.5, fontWeight:700, padding:"7px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, color:C.clay }}>
-              <Ic n="ban" s={13} c={C.clay} /> Hate both
+            <button onClick={() => react("pass")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color:C.clay }}>
+              <Ic n="ban" s={13} c={C.clay} /> Pass both
             </button>
-            <button onClick={() => react("skip")} className="lift" style={{ fontSize:12.5, fontWeight:600, padding:"7px 14px", borderRadius:999, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+            <button onClick={() => react("skip")} className="lift" style={{ fontSize:T.meta, fontWeight:600, padding:"7px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
               Skip
             </button>
           </div>
         </div>
-      )}
+  ) : null;
 
-      <p style={{ fontSize:13, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
+  return (
+    <div>
+      <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center", flexWrap:"wrap" }}>
+        <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={(v) => { setG(v); setLastAdded(null); }} active={gColor} />
+      </div>
+
+
+      <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
         {votes < 4 && tuned < 3
-          ? <>New names that match the <b>style</b> of your starting list. Vote or use <b>Tune</b> above and these retune to <b>your</b> taste.</>
-          : <>Tuned to your votes, stars, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>+ Add</b> to drop one into voting.</>}
+          ? <>New names that match the <b>style</b> of your starting list. Vote, or pick a favourite in the <b>Tune your taste</b> card below, and these retune to <b>your</b> taste.</>
+          : <>Tuned to your votes, stars, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>Add</b> to drop one into voting.</>}
       </p>
 
       {lastAdded && (
-        <div style={{ marginBottom:14, padding:"10px 12px", borderRadius:10, background:gTint(g), border:`1px solid ${C.line}`, fontSize:13, color:C.ink }}>
+        <div style={{ marginBottom:14, padding:"10px 12px", borderRadius:10, background:gTint(g), border:`1px solid ${C.line}`, fontSize:T.body, color:C.ink }}>
           Added <b style={{ fontFamily:DISPLAY }}>{lastAdded.name}</b> to {lastAdded.gender === "both" ? "both lists" : lastAdded.gender === "boy" ? "boys" : "girls"}. It’s in your Vote deck now.
         </div>
       )}
 
       {lastDismissed && (
         <div style={{ marginBottom:14, padding:"11px 13px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
-          <div style={{ fontSize:13, color:C.ink, marginBottom:7 }}>
+          <div style={{ fontSize:T.body, color:C.ink, marginBottom:7 }}>
             Hid <b style={{ fontFamily:DISPLAY }}>{lastDismissed.name}</b> — you won’t see it again. <span style={{ color:C.muted }}>Mind sharing why? Totally optional, and it helps us suggest better.</span>
           </div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
             <input value={reasonText} onChange={(e) => setReasonText(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") saveReason(); }}
               placeholder="e.g. reminds me of someone, too popular, hard to spell…"
-              style={{ flex:1, minWidth:180, fontSize:13, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.line}`, background:C.bg, color:C.ink }} />
-            <button onClick={saveReason} className="lift" style={{ fontSize:12.5, fontWeight:700, padding:"7px 14px", borderRadius:8, background:C.teal, color:"#fff" }}>Save</button>
-            <button onClick={() => setLastDismissed(null)} className="lift" style={{ fontSize:12.5, fontWeight:600, padding:"7px 12px", borderRadius:8, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>No thanks</button>
+              style={{ flex:1, minWidth:180, fontSize:T.body, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.line}`, background:C.bg, color:C.ink }} />
+            <button onClick={saveReason} className="lift" style={{ fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:8, background:C.teal, color:"#fff" }}>Save</button>
+            <button onClick={() => setLastDismissed(null)} className="lift" style={{ fontSize:T.meta, fontWeight:600, padding:"7px 12px", borderRadius:8, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>No thanks</button>
           </div>
         </div>
       )}
 
       {sugg.length === 0 ? (
-        <p style={{ fontSize:13, color:C.muted }}>You’ve added all the close matches — keep voting and check back.</p>
+        <p style={{ fontSize:T.body, color:C.muted }}>You’ve added all the close matches — keep voting and check back.</p>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          {sugg.map((item) => {
+          {sugg.map((item, si) => {
             const c = item.c, f = item.f;
-            const styles = f.s.slice(0, 2).map((t) => STYLE_LABEL[t]).filter(Boolean);
             const nick = (c.nicks && c.nicks.length) ? c.nicks[0] : null;
             return (
-              <div key={c.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderRadius:12, background:C.paper, border:`1px solid ${C.line}` }}>
+              <React.Fragment key={c.id}>
+              <div style={{ display:"flex", alignItems:"center", gap:S.md, padding:"12px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
-                    <span style={{ fontFamily:DISPLAY, fontSize:22, color:C.ink }}>{c.name}</span>
-                    {SAY[c.id] && <span style={{ fontSize:11, color:C.clay, fontStyle:"italic" }}>“{SAY[c.id]}”</span>}
-                    {f.lean === "u" && <span style={{ fontSize:10, fontWeight:700, color:C.teal, letterSpacing:0.4 }}>UNISEX</span>}
+                    <span style={{ fontFamily:DISPLAY, fontSize:T.name + 3, color:C.ink }}>{c.name}</span>
+                    {SAY[c.id] && <span style={{ fontSize:T.micro, color:C.clay, fontStyle:"italic" }}>“{SAY[c.id]}”</span>}
+                    {f.lean === "u" && <span style={{ ...LABEL, color:C.teal }}>unisex</span>}
                   </div>
-                  <div style={{ fontSize:12.5, color:C.muted, margin:"2px 0 6px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:2 }}>
-                    <span style={{ fontSize:10.5, color:C.muted, background:C.bg, borderRadius:999, padding:"1px 7px" }}>{ORIGIN_LABEL[f.o] || ""}</span>
-                    {styles.map((s) => (
-                      <span key={s} style={{ fontSize:10.5, color:C.muted, background:C.bg, borderRadius:999, padding:"1px 7px" }}>{s}</span>
-                    ))}
-                  </div>
-                  <PopLine id={c.id} gender={g} compact meaningShown />
+                  <div style={{ fontSize:T.meta, color:C.muted, margin:"2px 0 6px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
+                  <PopLine id={c.id} gender={g} compact noChart meaningShown />
                   <div style={{ marginTop:6 }}>
-                    <NickEditor id={c.id} nicks={mergeNicks({ id: c.id, nicks: c.nicks || [] }, g).nicks} added={addedNicksFor(data.addnicks, g, c.id)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={g} />
+                    <NickEditor id={c.id} nicks={mergeNicks({ id: c.id, nicks: c.nicks || [] }, g).nicks} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={g} />
                   </div>
                 </div>
                 <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"stretch", gap:6 }}>
                   <button onClick={() => add(item)} className="lift"
-                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"8px 14px", borderRadius:999, fontWeight:700, fontSize:13, background:gColor(g), color:"#fff" }}>
+                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"8px 14px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:gColor(g), color:"#fff" }}>
                     <Ic n="plus" s={14} c="#fff" /> Add
                   </button>
                   <button onClick={() => dismiss(item)} className="lift"
-                    style={{ fontSize:11.5, fontWeight:600, padding:"4px 10px", borderRadius:999, background:"transparent", color:C.muted }}>
-                    Not for me
+                    style={{ fontSize:T.micro, fontWeight:600, padding:"4px 10px", borderRadius:R.card, background:"transparent", color:C.muted }}>
+                    Pass
                   </button>
                 </div>
               </div>
+              {si === 2 && tuneCard}
+              </React.Fragment>
             );
           })}
         </div>
@@ -6927,7 +7104,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       {passedIds.length > 0 && (
         <div style={{ marginTop:18 }}>
           <button onClick={() => setShowPassed((s) => !s)} className="lift"
-            style={{ display:"flex", alignItems:"center", gap:6, fontSize:12.5, fontWeight:600, color:C.muted }}>
+            style={{ display:"flex", alignItems:"center", gap:6, fontSize:T.meta, fontWeight:600, color:C.muted }}>
             <Ic n={showPassed ? "x" : "list"} s={13} /> Passed names ({passedIds.length})
           </button>
           {showPassed && (
@@ -6935,13 +7112,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
               {passedIds.map((id) => (
                 <div key={id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <span style={{ fontFamily:DISPLAY, fontSize:16, color:C.ink }}>{CAND_NAME[id] || id}</span>
+                    <span style={{ fontFamily:DISPLAY, fontSize:T.name, color:C.ink }}>{CAND_NAME[id] || id}</span>
                     {dismissed[id] && dismissed[id].r
-                      ? <span style={{ fontSize:12, color:C.muted, marginLeft:8 }}>“{dismissed[id].r}”</span>
-                      : <span style={{ fontSize:11.5, color:C.line, marginLeft:8, fontStyle:"italic" }}>no reason given</span>}
+                      ? <span style={{ fontSize:T.meta, color:C.muted, marginLeft:8 }}>“{dismissed[id].r}”</span>
+                      : <span style={{ fontSize:T.micro, color:C.line, marginLeft:8, fontStyle:"italic" }}>no reason given</span>}
                   </div>
                   <button onClick={() => onRestore(g, id)} className="lift"
-                    style={{ flexShrink:0, fontSize:12, fontWeight:600, padding:"5px 11px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>
+                    style={{ flexShrink:0, fontSize:T.meta, fontWeight:600, padding:"5px 11px", borderRadius:R.card, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>
                     Bring back
                   </button>
                 </div>

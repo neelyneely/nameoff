@@ -10,6 +10,11 @@
     --teal:#2E4756; --ochre:#C9821A; --sage:#566B36; --clay:#A4663A;
     --claire:#C9821A; --andrew:#3F6CA3;
     --girl:#B5677B; --boy:#5B7493; --girl-tint:#EFE0E2; --boy-tint:#DFE6EC;
+    /* type scale (mirrors T in app.jsx) - nothing below 11px */
+    --t-display:44px; --t-title:26px; --t-name:17px; --t-body:14px; --t-meta:12px; --t-micro:11px;
+    /* spacing on a 4px base (S) and the three radii (R) */
+    --s-xs:4px; --s-sm:8px; --s-md:12px; --s-lg:20px; --s-xl:32px;
+    --r-block:0; --r-card:10px; --r-pill:999px;
     --disp:'Futura','Century Gothic','Avenir Next','Twentieth Century',sans-serif;
     --body:'Avenir Next','Segoe UI',system-ui,sans-serif;
   }
@@ -30,7 +35,7 @@
   #root>.boot{display:flex;min-height:100vh;align-items:center;justify-content:center;color:var(--muted);font-size:14px;}
   @media (max-width:560px){ .twocol{flex-direction:column;} .addgrid{grid-template-columns:1fr;} .cards{flex-direction:column;} }
   /* On desktop, center the matchup in the remaining viewport instead of leaving a big gap below. */
-  @media (min-width:561px){ .voteWrap{min-height:calc(100vh - 210px);display:flex;flex-direction:column;justify-content:center;} }
+  @media (min-width:561px){ .voteWrap{min-height:calc(100vh - 400px);display:flex;flex-direction:column;justify-content:center;} }
   @media (prefers-reduced-motion: reduce){ .lift{transition:none;} }
   /* celebration: confetti + "it's a match" pop */
   .no-confetti{position:fixed;inset:0;pointer-events:none;z-index:60;overflow:hidden;}
