@@ -2345,7 +2345,7 @@ const SAY = {
   della:"DEL-ah", iris:"EYE-riss", nora:"NOR-ah", linus:"LY-nəs", arlo:"AR-loh", emmett:"EM-it",
   everett:"EV-rit", emerson:"EM-er-sən", ellison:"EL-ih-sən", indigo:"IN-dih-goh", marigold:"MARE-ih-gold",
   // roster names whose spelling hides the sound
-  niamh:"NEEV", seamus:"SHAY-məs", saoirse:"SEER-shə", cloda:"KLOH-də", maira:"MY-rah", keelan:"KEE-lin", lowen:"LOH-ən", conall:"KON-əl", sloane:"SLOHN", maeve:"MAYV",
+  niamh:"NEEV", seamus:"SHAY-məs", saoirse:"SEER-shə", cloda:"KLOH-də", maira:"MY-rah", keelan:"KEE-lin", lowen:"LOH-ən", conall:"KON-əl", maeve:"MAYV",
 };
 // Pronunciation hint for any name (subtle, shown the same way on every card).
 const sayOf = (id) => SAY[id] || null;
