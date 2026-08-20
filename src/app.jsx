@@ -6792,6 +6792,7 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
 function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
   const [val, setVal] = useState("");
   const [tagging, setTagging] = useState(null); // id whose vibe we're asking about
+  const [showAdded, setShowAdded] = useState(false); // the list you've already given it
   const ids = Object.keys(likes || {});
   const accent = gColor(gender);
   const submit = () => {
@@ -6799,7 +6800,9 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
     if (!v) return;
     const id = onAdd(gender, v);
     setVal("");
-    if (id && !FEAT[id]) setTagging(id);         // we don't know it — ask for a vibe
+    if (!id) return;
+    setShowAdded(true);                          // so you can see it landed
+    if (!FEAT[id]) setTagging(id);               // we don't know it — ask for a vibe
   };
   const pending = tagging && likes[tagging];
   const pendingTags = (pending && pending.f && pending.f.s) || [];
@@ -6811,21 +6814,23 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
   };
   return (
     <div style={{ borderRadius:R.card, padding:S.md, marginBottom:S.lg, background:C.paper, border:`1px solid ${C.line}` }}>
-      <div style={{ ...LABEL, color:C.ink }}>Tune your taste</div>
-      <p style={{ fontSize:T.meta, color:C.muted, margin:`${S.xs}px 0 ${S.sm}px` }}>
-        Two ways to teach the suggestions below what you go for.
-      </p>
-      <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.xs }}>Name one you already like</div>
+      <div style={{ ...LABEL, color:C.ink, marginBottom:S.sm }}>Tune your taste</div>
       <div style={{ display:"flex", gap:S.sm }}>
         <input value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder="Type a name you like…" aria-label="A name you already love"
+          placeholder="Name one you already like…" aria-label="Name one you already like"
           style={{ flex:1, minWidth:0, padding:"8px 10px", borderRadius:R.card, background:C.bg,
             border:`1px solid ${C.line}`, color:C.ink, fontSize:T.body }} />
         <button onClick={submit} className="lift"
           style={{ padding:"8px 16px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:accent, color:"#fff" }}>Add</button>
       </div>
       {ids.length > 0 && (
+        <button onClick={() => setShowAdded((v) => !v)} className="lift" aria-expanded={showAdded}
+          style={{ marginTop:S.sm, fontSize:T.micro, fontWeight:700, color:C.muted, background:"none" }}>
+          {ids.length} added {showAdded ? "▾" : "▸"}
+        </button>
+      )}
+      {ids.length > 0 && showAdded && (
         <div style={{ display:"flex", flexWrap:"wrap", gap:S.xs, marginTop:S.sm }}>
           {ids.map((id) => {
             const l = likes[id], derived = !!l.f;
@@ -6873,7 +6878,7 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
       </p>
       {children && (
         <div style={{ marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
-          <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Or pick between these two</div>
+          <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Or pick the one you like better</div>
           {children}
         </div>
       )}
@@ -6918,30 +6923,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
     setLastDismissed({ id: item.c.id, name: item.c.name }); setReasonText(""); setLastAdded(null);
     setRound((r) => r + 1);
   };
-  // Replace just one card of the Tune pair (keep the other one in place).
-  const replaceOne = (c) => setPair((cur) => {
-    if (!cur) return cur;
-    const idx = cur.findIndex((x) => x.id === c.id);
-    if (idx === -1) return cur;
-    const keep = cur[1 - idx];
-    const pool = suggestNames(data, profile, g).map((x) => x.c).filter((x) => x.id !== keep.id && x.id !== c.id);
-    if (!pool.length) return cur;
-    const np = [...cur]; np[idx] = pool[Math.floor(Math.random() * Math.min(5, pool.length))]; return np;
-  });
-  // Pass on one name in the Tune pair: hide it for good, keep the other card.
-  const passOne = (c) => {
-    onDismiss(g, c.id);
-    setLastDismissed({ id: c.id, name: c.name }); setReasonText(""); setLastAdded(null);
-    replaceOne(c);
-  };
-  // Add one name from the Tune pair to voting, keep the other card.
-  const addOne = (c) => {
-    const f = FEAT[c.id];
-    const gender = f && f.lean === "u" ? "both" : g;
-    onAdd(c.name, (c.nicks || []).join(", "), gender);
-    setLastAdded({ name: c.name, gender }); setLastDismissed(null);
-    replaceOne(c);
-  };
   const saveReason = () => {
     if (lastDismissed) onDismiss(g, lastDismissed.id, reasonText.trim());
     setLastDismissed(null); setReasonText("");
@@ -6964,17 +6945,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                   {SAY[c.id] && <div style={{ fontSize:T.micro, color:C.clay, marginTop:2, fontStyle:"italic" }}>“{SAY[c.id]}”</div>}
                   <div style={{ fontSize:T.meta, color:C.muted, margin:"3px 0 0" }}>
                     {cleanMeaning(MEANING[c.id]) || ""}{f.lean === "u" ? " · unisex" : ""}
-                  </div>
-                  <PopLine id={c.id} gender={g} compact noChart />
-                  <div style={{ display:"flex", gap:6, marginTop:8 }}>
-                    <button onClick={(e) => { e.stopPropagation(); addOne(c); }} aria-label={`Add ${c.name} to voting`}
-                      style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:T.micro, fontWeight:700, padding:"5px 6px", borderRadius:8, background:gColor(g), color:"#fff", border:"none" }}>
-                      <Ic n="plus" s={11} c="#fff" /> Add
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); passOne(c); }} aria-label={`Hard pass on ${c.name} — never show it again`}
-                      style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:T.micro, fontWeight:600, padding:"5px 6px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.clay }}>
-                      <Ic n="ban" s={11} c={C.clay} /> Hard pass
-                    </button>
                   </div>
                 </div>
               );
