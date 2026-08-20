@@ -84,10 +84,11 @@ properties in head.html. These exist because the file had drifted to 22 font siz
 
 ## Vocabulary — two words for "no", and they mean different things
 - **Veto** — removes the name for BOTH of you. The couple's power.
-- **Pass** — removes it for you only (guests, and dismissing a suggestion).
-A control keeps its name through the whole flow: the button that says Pass
-produces a toast that says Passed. Don't reintroduce "hard pass", "not for me",
-"hate both" or "take mine back".
+- **Hard pass** — removes it for you only (guests, and dismissing a suggestion).
+A control keeps its name through the whole flow: the button that says Hard pass
+produces a toast that says Hard-passed. The one flourish that stays is the
+"💀 {name} can't stand this one" line on a rankings row — the family likes it.
+Don't reintroduce "not for me" or "Pass" as a third synonym.
 
 ## Style/UX conventions already in place
 - MCM warm palette in the `C` object (app.jsx); Futura-ish display font.

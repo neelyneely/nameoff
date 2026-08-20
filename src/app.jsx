@@ -5177,7 +5177,7 @@ function App() {
     else if (votable(next, g)) { setPair(pickPair(pool, next[g][profile], null)); }
     else if (votable(next, otherG(g))) { setVoteGender(otherG(g)); setBlockCount(0); }
     else { setPair(null); }
-    showToast(`${isOwner(profile) ? "Vetoed" : "Passed on"} ${nm}`, () => unveto(g, profile, id));
+    showToast(`${isOwner(profile) ? "Vetoed" : "Hard-passed"} ${nm}`, () => unveto(g, profile, id));
   };
   const unveto = (g, profileKey, id) => {
     const next = clone(dataRef.current);
@@ -5976,7 +5976,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
   const fp = funcPop(n.id, gender);
   const popNicks = (fp ? fp.nicks : []).filter((nk) => nk.rank != null || nk.pct != null);
   // Picking is a plain tap on the card — no swipe, so vertical scrolling stays normal.
-  // A guest's Pass takes two taps: the first explains what it does, the second commits.
+  // A guest's Hard pass takes two taps: the first explains what it does, the second commits.
   const [armed, setArmed] = useState(false);
   useEffect(() => { setArmed(false); }, [n.id]);
   useEffect(() => {
@@ -5998,14 +5998,14 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
       }}>
       {(guest && armed)
         ? <button onClick={(e) => { e.stopPropagation(); setArmed(false); onVeto(); }} disabled={!!picked}
-            aria-label={`Confirm: pass on ${n.name} and take it off your list for good`}
+            aria-label={`Confirm: hard pass on ${n.name} and take it off your list for good`}
             className="lift" style={{ position:"absolute", top:S.md, left:S.md, right:S.md, display:"flex", alignItems:"center", justifyContent:"center",
               gap:S.xs, fontSize:T.micro, fontWeight:700, padding:"5px 10px", borderRadius:R.pill, color:"#fff", background:C.clay }}>
             <Ic n="ban" s={12} c="#fff" /> Tap again — removes it for good
           </button>
         : <button onClick={(e) => { e.stopPropagation(); if (guest) setArmed(true); else onVeto(); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
             title={guest
-              ? "Pass — takes this name off your list for good, and Claire and Andrew can see it. Just want a different pair? Pick either card, or use “Can’t decide, skip”."
+              ? "Hard pass — takes this name off your list for good, and Claire and Andrew can see it. Just want a different pair? Pick either card, or use “Can’t decide, skip”."
               : "Veto — takes it out for both of you"}
             className="lift" style={{ position:"absolute", top:S.md, right:S.md, display:"flex", alignItems:"center", gap:S.xs, fontSize:T.micro, fontWeight:700,
               padding:"4px 10px", borderRadius:R.pill, color:C.clay, background:"rgba(255,255,255,0.55)" }}>
@@ -6067,11 +6067,11 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, can
     <div className="voteWrap">
       {banner}
       <div className="cards">
-        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Pass"} guest={!isOwner(profile)} />
+        <NameCard n={na} gender={gender} picked={picked} dim={picked && picked !== a} onPick={() => onVote(a, b)} onVeto={() => onVeto(a)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} guest={!isOwner(profile)} />
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
           <span className="disp" style={{ fontSize:T.body, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.15em", color:C.muted }}>vs</span>
         </div>
-        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Pass"} guest={!isOwner(profile)} />
+        <NameCard n={nb} gender={gender} picked={picked} dim={picked && picked !== b} onPick={() => onVote(b, a)} onVeto={() => onVeto(b)} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemoveNick={isOwner(profile)} vetoWord={isOwner(profile) ? "Veto" : "Hard pass"} guest={!isOwner(profile)} />
       </div>
       <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
         <button onClick={onBack} disabled={!canGoBack} className="lift" title="Revisit your last vote and change it"
@@ -6152,8 +6152,8 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
               presence/absence of the dislike note never changes a card's height. */}
           {(reserveHaters || (haters && haters.length > 0)) && (
             <div style={{ fontSize:T.micro, marginTop:5, minHeight:16, color:C.clay, fontWeight:600, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-              <span>{haters && haters.length > 0 ? `${fmtNames(haters)} passed on this` : ""}</span>
-              {iHardPassed && <button onClick={onUnpass} className="lift" style={{ fontSize:T.micro, fontWeight:700, padding:"1px 7px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.sage, background:"transparent" }}>Undo pass</button>}
+              <span>{haters && haters.length > 0 ? `💀 ${fmtNames(haters)} can’t stand this one` : ""}</span>
+              {iHardPassed && <button onClick={onUnpass} className="lift" style={{ fontSize:T.micro, fontWeight:700, padding:"1px 7px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.sage, background:"transparent" }}>take mine back</button>}
             </div>
           )}
         </div>
@@ -6207,14 +6207,23 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : k === "mine" ? pColor(profile) : C.clay);
   const sideColor = (k) => (k === "us" ? "#E3B23C" : k === "fam" ? "#3F6CA3" : pColor(k));
   const sideName = (k) => (sides.find((x) => x.key === k) || {}).name || k;
-  const PickRow = ({ label, sel, onPick }) => (
-    <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
-      <span style={{ ...LABEL, color:C.muted, minWidth:48 }}>{label}</span>
-      {sides.map((s) => (
-        <button key={s.key} onClick={() => onPick(s.key)} className="lift" style={{ padding:"4px 11px", borderRadius:R.pill, fontSize:T.meta, fontWeight:700, border:`1px solid ${sel === s.key ? "transparent" : C.line}`,
-          ...(sel === s.key ? { background: sideColor(s.key), color:"#fff" } : { background:C.paper, color:C.muted }) }}>{s.name}</button>
-      ))}
-    </div>
+  // The selected name is tinted to match its axis on the chart below, so which
+  // dropdown drives which direction stays readable without a legend.
+  const PickRow = ({ label, sel, onPick, other }) => (
+    <label style={{ display:"flex", alignItems:"center", gap:S.sm }}>
+      <span style={{ ...LABEL, color:C.muted }}>{label}</span>
+      <span style={{ position:"relative", display:"inline-flex", alignItems:"center" }}>
+        <select value={sel} onChange={(e) => onPick(e.target.value)} aria-label={`${label} axis`}
+          style={{ appearance:"none", WebkitAppearance:"none", padding:"6px 26px 6px 12px", borderRadius:R.card,
+            border:`1px solid ${C.line}`, background:C.paper, color:sideColor(sel), fontWeight:700,
+            fontSize:T.meta, fontFamily:"inherit", cursor:"pointer" }}>
+          {sides.filter((x) => x.key !== other).map((x) => (
+            <option key={x.key} value={x.key}>{x.name}</option>
+          ))}
+        </select>
+        <span style={{ position:"absolute", right:10, pointerEvents:"none", fontSize:9, color:C.muted }}>▾</span>
+      </span>
+    </label>
   );
   return (
     <div>
@@ -6247,9 +6256,9 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
             <p style={{ fontSize:T.body, margin:0 }}>Once two of you have voted, this maps where you agree and where you clash.</p>
           </div>
         ) : (<>
-          <div style={{ display:"flex", flexDirection:"column", gap:S.xs, marginBottom:S.sm }}>
-            <PickRow label="Across" sel={lk} onPick={setLeftKey} />
-            <PickRow label="Up" sel={rk} onPick={setRightKey} />
+          <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:S.lg, marginBottom:S.sm }}>
+            <PickRow label="Across" sel={lk} onPick={setLeftKey} other={rk} />
+            <PickRow label="Up" sel={rk} onPick={setRightKey} other={lk} />
           </div>
           <p style={{ fontSize:T.meta, color:C.muted, margin:"0 0 12px" }}>
             Every name placed by <b style={{ color:sideColor(lk) }}>{sideName(lk)}</b>’s rank (further right = they love it) and <b style={{ color:sideColor(rk) }}>{sideName(rk)}</b>’s (higher = they love it).
@@ -6403,7 +6412,7 @@ function GenderRankColumn({ gender, title, mode, who, data, profile, readOnly, n
   // who actually voted in THIS gender (someone who only did boys shouldn't flatten
   // the girls' list toward the 1500 start rating).
   const votedGuests = (who || data.roster.map((r) => r.key)).filter((k) => data[gender][k] && data[gender][k].votes > 0);
-  // Family/friends who passed on a name (shown as "passed on this", not a removal).
+  // Family/friends who hard-passed a name (shown as "can't stand this one", not a removal).
   const hatersOf = (id) => guestKeys.filter((k) => (data[gender][k].vetoed || []).includes(id)).map((k) => data.profiles[k] || k);
   // Average only family members who actually rated this name (don't pad non-raters
   // with the START default, which would drag every score toward 1500).
@@ -6767,9 +6776,9 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                       style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:T.micro, fontWeight:700, padding:"5px 6px", borderRadius:8, background:gColor(g), color:"#fff", border:"none" }}>
                       <Ic n="plus" s={11} c="#fff" /> Add
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); passOne(c); }} aria-label={`Pass on ${c.name} — never show it again`}
+                    <button onClick={(e) => { e.stopPropagation(); passOne(c); }} aria-label={`Hard pass on ${c.name} — never show it again`}
                       style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:4, fontSize:T.micro, fontWeight:600, padding:"5px 6px", borderRadius:8, background:C.bg, border:`1px solid ${C.line}`, color:C.clay }}>
-                      <Ic n="ban" s={11} c={C.clay} /> Pass
+                      <Ic n="ban" s={11} c={C.clay} /> Hard pass
                     </button>
                   </div>
                 </div>
@@ -6781,7 +6790,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
               <Ic n="heart" s={13} c="#fff" fill="#fff" /> Love both
             </button>
             <button onClick={() => react("pass")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color:C.clay }}>
-              <Ic n="ban" s={13} c={C.clay} /> Pass both
+              <Ic n="ban" s={13} c={C.clay} /> Hate both
             </button>
             <button onClick={() => react("skip")} className="lift" style={{ fontSize:T.meta, fontWeight:600, padding:"7px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
               Skip
@@ -6854,7 +6863,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                   </button>
                   <button onClick={() => dismiss(item)} className="lift"
                     style={{ fontSize:T.micro, fontWeight:600, padding:"4px 10px", borderRadius:R.card, background:"transparent", color:C.muted }}>
-                    Pass
+                    Hard pass
                   </button>
                 </div>
               </div>
