@@ -5144,13 +5144,6 @@ function App() {
       if (total === UNLOCK_VOTES) celebrateNow({ title: "Rankings unlocked!", emoji: "🎉", note: `${total} votes in — Rankings is open.` });
     }, 280);
   };
-  const skip = () => {
-    if (picked) return;
-    const completed = blockCount + 1;
-    const { g, c } = advance(dataRef.current, voteGender, completed);
-    if (g !== voteGender) { setVoteGender(g); setBlockCount(c); }
-    else { setBlockCount(completed); setPair(pickPair(poolFor(dataRef.current, g), dataRef.current[g][profile], pair)); }
-  };
   // Step back through this session's votes and re-decide them.
   const canGoBack = undo.some((e) => e.profile === profile);
   const goBack = () => {
@@ -5539,7 +5532,7 @@ function App() {
         popMode={popMode} setPopMode={changePopMode} onOpenLog={() => { setShowAdd(false); setShowLog(true); }} />}
       <Tabs view={view} setView={setView} />
 
-      {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onSkip={skip} onVeto={vetoCurrent}
+      {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onVeto={vetoCurrent}
         onBack={goBack} canGoBack={canGoBack} profile={profile}
         onAddNick={addNick} onRemoveNick={removeNick} />}
       {view === "rankings" && (unlocked
@@ -6110,7 +6103,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
           </button>
         : <button onClick={(e) => { e.stopPropagation(); setArmed(true); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
             title={guest
-              ? "Hard pass — takes this name off your list for good, and Claire and Andrew can see it. Just want a different pair? Pick either card, or use “Can’t decide, skip”."
+              ? "Hard pass — takes this name off your list for good, and Claire and Andrew can see it. Just want a different pair? Pick either card."
               : "Veto — takes it out for both of you. Takes two taps."}
             className="lift" style={{ position:"absolute", top:S.md, right:S.md, display:"flex", alignItems:"center", justifyContent:"center", gap:S.xs,
               fontSize:T.micro, fontWeight:700, padding:"0 12px", minHeight:36, borderRadius:R.pill, color:C.clay, background:"rgba(255,255,255,0.55)" }}>
@@ -6137,7 +6130,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
     </div>
   );
 }
-function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, canGoBack, profile, onAddNick, onRemoveNick }) {
+function Vote({ names, gender, pair, picked, onVote, onVeto, onBack, canGoBack, profile, onAddNick, onRemoveNick }) {
   // Keyboard voting for fast sessions: ←/→ pick left/right, Space skips.
   useEffect(() => {
     const onKey = (e) => {
@@ -6146,11 +6139,11 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, can
       if (tag === "input" || tag === "textarea" || (ae && ae.isContentEditable)) return;
       if (e.key === "ArrowLeft") { e.preventDefault(); onVote(pair[0], pair[1]); }
       else if (e.key === "ArrowRight") { e.preventDefault(); onVote(pair[1], pair[0]); }
-      else if (e.key === " ") { if (tag === "button") return; e.preventDefault(); onSkip(); }
+
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pair, picked, onVote, onSkip]);
+  }, [pair, picked, onVote]);
   // The round label is a quiet centred word, not a pill on its own line — the two
   // color fields below already say which round this is.
   const banner = (
@@ -6183,9 +6176,8 @@ function Vote({ names, gender, pair, picked, onVote, onSkip, onVeto, onBack, can
           style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"6px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color: canGoBack ? C.teal : C.line, cursor: canGoBack ? "pointer" : "default" }}>
           <Ic n="back" s={14} c={canGoBack ? C.teal : C.line} /> Go back
         </button>
-        <button onClick={onSkip} disabled={!!picked} className="lift" style={{ fontSize:T.meta, fontWeight:600, padding:"6px 14px", borderRadius:R.card, color:C.muted, border:`1px solid ${C.line}`, background:C.paper }}>Can’t decide, skip</button>
       </div>
-      <p style={{ textAlign:"center", fontSize:T.micro, color:C.muted, margin:"10px 0 0" }}>Tap a card to pick · ←/→ keys, space to skip</p>
+      <p style={{ textAlign:"center", fontSize:T.micro, color:C.muted, margin:"10px 0 0" }}>Tap a name to vote</p>
     </div>
   );
 }
