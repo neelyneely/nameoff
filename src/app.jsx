@@ -122,7 +122,7 @@ const NAMES = {
 const PROFILES = { claire:"Claire", andrew:"Andrew" };
 const OWNERS = ["claire", "andrew"];   // only these two feed the official Rankings
 const OWNER_NAMES = { claire:"Claire", andrew:"Andrew" };
-const UNLOCK_VOTES = 10;               // votes a person must cast before Rankings + Trends unlock
+const UNLOCK_VOTES = 10;               // votes a person must cast before Rankings unlocks
 const isOwner = (p) => OWNERS.includes(p);
 const START = 1500;
 const BLOCK = 2; // matchups voted per gender before the Vote flow flips to the other
@@ -5056,7 +5056,7 @@ function App() {
   const pg = known ? data[voteGender][profile] : null;
   const names = data ? namesFor(voteGender, data.custom, data.removed) : [];
   const myVotes = known ? (data.boy[profile].votes + data.girl[profile].votes) : 0;
-  const unlocked = myVotes >= UNLOCK_VOTES; // Rankings + Trends gated until you've voted
+  const unlocked = myVotes >= UNLOCK_VOTES; // Rankings gated until you've voted
 
   const vote = (winId, loseId) => {
     if (picked || votingRef.current) return;
@@ -5091,7 +5091,7 @@ function App() {
       showToast(`Picked ${findName(namesFor(g, next.custom), winId).name}`, goBack);
       // Little milestone celebrations: the 10-vote unlock, then every 25.
       const total = (next.boy[profile].votes || 0) + (next.girl[profile].votes || 0);
-      if (total === UNLOCK_VOTES) celebrateNow({ title: "Rankings unlocked!", emoji: "🎉", note: `${total} votes in — Rankings & Trends are open.` });
+      if (total === UNLOCK_VOTES) celebrateNow({ title: "Rankings unlocked!", emoji: "🎉", note: `${total} votes in — Rankings is open.` });
     }, 280);
   };
   const skip = () => {
@@ -5447,9 +5447,6 @@ function App() {
         ? <Rankings data={data} profile={profile} onUnveto={unveto} onVeto={vetoName} onClaim={claimName} onAddNick={addNick} onRemoveNick={removeNick} onReorder={reorderRank} notes={data.notes} onSetNote={setNote} />
         : <LockMsg myVotes={myVotes} />)}
       {view === "foryou" && <ForYou data={data} profile={profile} initialGender={voteGender} onAdd={addName} onReact={reactExplore} onDismiss={dismissSuggestion} onRestore={restoreSuggestion} onAddNick={addNick} onRemoveNick={removeNick} />}
-      {view === "trends" && (unlocked
-        ? <Trends data={data} profile={profile} />
-        : <LockMsg myVotes={myVotes} />)}
 
       {view === "vote" && (
         <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:T.meta, color:C.muted }}>
@@ -5583,7 +5580,7 @@ function WhoPanel({ roster, onChoose, onDelete }) {
           <button onClick={() => onChoose(name)} className="lift" style={{ padding:"12px 22px", borderRadius:12, fontSize:T.name, fontWeight:700, background:C.sage, color:"#fff" }}>Start</button>
         </div>
         <p style={{ fontSize:T.meta, color:C.muted, marginTop:22, lineHeight:1.5 }}>
-          You’ll vote on your own first. Once you’ve cast 10 votes, the Rankings and Trends tabs unlock.
+          You’ll vote on your own first. Once you’ve cast 10 votes, the Rankings tab unlocks.
         </p>
       </div>
     </div>
@@ -5595,7 +5592,7 @@ function LockMsg({ myVotes }) {
     <div style={{ borderRadius:12, padding:"40px 20px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
       <div style={{ display:"flex", justifyContent:"center", marginBottom:10 }}><Ic n="heart" s={26} c={C.line} /></div>
       <p style={{ fontSize:T.name, fontWeight:700, color:C.ink, margin:"0 0 4px" }}>Vote first to unlock this</p>
-      <p style={{ fontSize:T.body, margin:"0 0 12px" }}>Just {left} more {left === 1 ? "matchup" : "matchups"} to go — then Rankings &amp; Trends open up. 🌱</p>
+      <p style={{ fontSize:T.body, margin:"0 0 12px" }}>Just {left} more {left === 1 ? "matchup" : "matchups"} to go — then Rankings opens up. 🌱</p>
       <div style={{ maxWidth:220, margin:"0 auto", height:8, borderRadius:999, background:C.line, overflow:"hidden" }}>
         <div style={{ height:8, borderRadius:999, width:`${Math.min(100, (myVotes / UNLOCK_VOTES) * 100)}%`, background:C.sage, transition:"width .3s ease" }} />
       </div>
@@ -5676,7 +5673,7 @@ function AddPanel({ custom, onAdd, onRemove, data, onRename, canEdit, popMode, s
 
 /* -------------------------------- tabs ----------------------------------- */
 function Tabs({ view, setView }) {
-  const items = [["vote","Vote","heart"],["foryou","Name ideas","spark"],["rankings","Rankings","trophy"],["trends","Trends","trend"]];
+  const items = [["vote","Vote","heart"],["foryou","Name ideas","spark"],["rankings","Rankings","trophy"]];
   return (
     <div style={{ display:"flex", gap:4, marginBottom:20, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label, icon]) => (
@@ -6179,11 +6176,18 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const [mode, setMode] = useState("combined");
   // The couple's combined ranking, the family aggregate, and a head-to-head of the
   // couple vs one individual voter.
-  const options = [{ key: "combined", name: "Our list" }, { key: "everyone", name: "Everyone" }, { key: "compare", name: "Side by side" }, ...(isOwner(profile) ? [{ key: "mine", name: "My list" }] : [])];
+  const options = [{ key: "combined", name: "Our list" }, { key: "everyone", name: "Everyone" }, { key: "compare", name: "Compare" }, ...(isOwner(profile) ? [{ key: "mine", name: "My list" }] : [])];
   // Two-up head-to-head: pick any two rankings — the couple combined, or any
   // individual who has voted — and see them side by side. Defaults to Claire vs Andrew.
   const voters = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
-  const sides = [{ key: "combined", name: "Neely-Stevenson" }, ...voters.map((p) => ({ key: p.key, name: p.name }))];
+  // Anyone can be compared with anyone: the two of you as a unit, the family as a
+  // unit, or any individual voter.
+  const anyGuestVoted = voters.some((p) => !isOwner(p.key));
+  const sides = [
+    { key: "us", name: "Us" },
+    ...(anyGuestVoted ? [{ key: "fam", name: "Fam & friends" }] : []),
+    ...voters.map((p) => ({ key: p.key, name: p.name })),
+  ];
   const [leftKey, setLeftKey] = useState("claire");
   const [rightKey, setRightKey] = useState("andrew");
   // "Everyone" averages every voter equally by default; toggle people off to see
@@ -6198,15 +6202,16 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const voteCount = (k) => ((data.boy[k] || {}).votes || 0) + ((data.girl[k] || {}).votes || 0);
   const sideValid = (k) => sides.some((s) => s.key === k);
   const lk = sideValid(leftKey) ? leftKey : (sides[0] ? sides[0].key : null);
-  const rk = sideValid(rightKey) ? rightKey : (sides.find((s) => s.key !== lk) || sides[0] || {}).key;
+  const rk = sideValid(rightKey) && rightKey !== lk ? rightKey : (sides.find((s) => s.key !== lk) || sides[0] || {}).key;
   const readOnly = !(isOwner(profile) && mode === "combined"); // owners manage notes/vetoes on the couple's ranking only
   const tabColor = (k) => (k === "combined" ? C.teal : k === "everyone" ? C.sage : k === "mine" ? pColor(profile) : C.clay);
-  const sideColor = (k) => (k === "combined" ? C.teal : pColor(k));
+  const sideColor = (k) => (k === "us" ? "#E3B23C" : k === "fam" ? "#3F6CA3" : pColor(k));
+  const sideName = (k) => (sides.find((x) => x.key === k) || {}).name || k;
   const PickRow = ({ label, sel, onPick }) => (
     <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
-      <span style={{ fontSize:T.meta, fontWeight:700, color:C.muted, width:40 }}>{label}</span>
+      <span style={{ ...LABEL, color:C.muted, minWidth:48 }}>{label}</span>
       {sides.map((s) => (
-        <button key={s.key} onClick={() => onPick(s.key)} className="lift" style={{ padding:"4px 11px", borderRadius:999, fontSize:T.body, fontWeight:700, border:`1px solid ${sel === s.key ? "transparent" : C.line}`,
+        <button key={s.key} onClick={() => onPick(s.key)} className="lift" style={{ padding:"4px 11px", borderRadius:R.pill, fontSize:T.meta, fontWeight:700, border:`1px solid ${sel === s.key ? "transparent" : C.line}`,
           ...(sel === s.key ? { background: sideColor(s.key), color:"#fff" } : { background:C.paper, color:C.muted }) }}>{s.name}</button>
       ))}
     </div>
@@ -6237,18 +6242,23 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
         </div>
       )}
       {mode === "compare" ? (
-        voters.length === 0 ? (
-          <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-            <p style={{ fontSize:T.body, margin:0 }}>No one has voted yet. Once someone casts a vote you can compare two rankings side by side.</p>
+        voters.length < 2 ? (
+          <div style={{ borderRadius:R.card, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
+            <p style={{ fontSize:T.body, margin:0 }}>Once two of you have voted, this maps where you agree and where you clash.</p>
           </div>
         ) : (<>
-          <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
-            <PickRow label="Left" sel={lk} onPick={setLeftKey} />
-            <PickRow label="Right" sel={rk} onPick={setRightKey} />
+          <div style={{ display:"flex", flexDirection:"column", gap:S.xs, marginBottom:S.sm }}>
+            <PickRow label="Across" sel={lk} onPick={setLeftKey} />
+            <PickRow label="Up" sel={rk} onPick={setRightKey} />
           </div>
-          <p style={{ fontSize:T.micro, color:C.muted, margin:"0 0 12px" }}>Each ranking top-to-bottom, side by side. Names you <b style={{ color:C.sage }}>both rank highly</b> are outlined in green.</p>
-          <CompareGender gender="girl" title="Girls" data={data} leftKey={lk} rightKey={rk} />
-          <CompareGender gender="boy" title="Boys" data={data} leftKey={lk} rightKey={rk} />
+          <p style={{ fontSize:T.meta, color:C.muted, margin:"0 0 12px" }}>
+            Every name placed by <b style={{ color:sideColor(lk) }}>{sideName(lk)}</b>’s rank (further right = they love it) and <b style={{ color:sideColor(rk) }}>{sideName(rk)}</b>’s (higher = they love it).
+            The further a name sits from the diagonal, the more you disagree. <b style={{ color:C.sage }}>Green</b> means you agree.
+          </p>
+          <div className="twocol">
+            <CompareScatter gender="girl" title="Girls" data={data} lk={lk} rk={rk} sideName={sideName} sideColor={sideColor} />
+            <CompareScatter gender="boy" title="Boys" data={data} lk={lk} rk={rk} sideName={sideName} sideColor={sideColor} />
+          </div>
         </>)
       ) : mode === "mine" ? (
         <>
@@ -6268,70 +6278,42 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
     </div>
   );
 }
-// Head-to-head: one gender block with TWO ordered columns side by side — the
-// couple's combined ranking and the selected individual's ranking, each 1->N.
-// Names both sides rank similarly AND high (shared favorites) outline in green.
-function CompareGender({ gender, title, data, leftKey, rightKey }) {
-  const names = namesFor(gender, data.custom, data.removed);
-  const c = data[gender].claire, a = data[gender].andrew;
-  const cVoted = c.votes > 0, aVoted = a.votes > 0;
-  // A "side" can be the couple combined, or any individual voter.
-  const sideOf = (key) => {
-    if (key === "combined") {
-      const r = {};
-      names.forEach((n) => { const cr = c.ratings[n.id] ?? START, ar = a.ratings[n.id] ?? START; r[n.id] = (cVoted && aVoted) ? (cr + ar) / 2 : (cVoted ? cr : ar); });
-      return { label: "Neely-Stevenson", ratings: r, vetoed: [...(c.vetoed || []), ...(a.vetoed || [])], voted: cVoted || aVoted, color: C.teal };
-    }
-    const pg = data[gender][key];
-    return { label: data.profiles[key] || key, ratings: pg ? pg.ratings : {}, vetoed: pg ? (pg.vetoed || []) : [], voted: !!(pg && pg.votes > 0), color: pColor(key) };
+// One gender's map: every name placed by two sides' ranks. Replaces the old
+// two-column side-by-side lists — same question, but you see the whole set at once
+// and distance from the diagonal IS the disagreement.
+// A side's ratings: one person's own, the two of you averaged, or the family
+// averaged. Only people who actually rated a name count toward a group average, so
+// a non-voter can't drag it toward the 1500 start rating.
+function ratingsForSide(data, gender, key, names) {
+  const pg = (k) => data[gender][k] || {};
+  const avg = (keys) => {
+    const out = {};
+    names.forEach((n) => {
+      const rs = keys.filter((k) => pg(k).ratings && pg(k).ratings[n.id] != null);
+      out[n.id] = rs.length ? rs.reduce((t, k) => t + pg(k).ratings[n.id], 0) / rs.length : START;
+    });
+    return out;
   };
-  const L = sideOf(leftKey), R = sideOf(rightKey);
-  const benched = new Set([...(c.vetoed || []), ...(a.vetoed || []), ...L.vetoed, ...R.vetoed]);
-  const live = names.filter((n) => !benched.has(n.id));
-  const order = (rt) => [...live].sort((x, y) => ((rt[y.id] ?? START) - (rt[x.id] ?? START)) || x.name.localeCompare(y.name));
-  const lList = order(L.ratings), rList = order(R.ratings);
-  const lPos = {}; lList.forEach((n, i) => { lPos[n.id] = i; });
-  const rPos = {}; rList.forEach((n, i) => { rPos[n.id] = i; });
-  const big = Math.max(3, Math.ceil(live.length / 3));
-  const Column = ({ side, list }) => (
-    <div style={{ flex:1, minWidth:0 }}>
-      <div style={{ fontSize:T.micro, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em", color: side.color, marginBottom:6, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{side.label}</div>
-      <ol style={{ display:"flex", flexDirection:"column", gap:5 }}>
-        {list.map((n, i) => {
-          // Highlight shared favorites: both rank it similarly AND at least one ranks it high.
-          const agree = Math.abs(lPos[n.id] - rPos[n.id]) < big && Math.min(lPos[n.id], rPos[n.id]) < big;
-          return (
-            <li key={n.id} style={{ display:"flex", alignItems:"baseline", gap:7, borderRadius:9, padding:"6px 9px", background: agree ? `${C.sage}14` : C.paper, border:`1px solid ${agree ? C.sage : C.line}` }}>
-              <span className="disp" style={{ fontSize:T.body, fontWeight:700, color:C.muted, minWidth:16 }}>{i + 1}</span>
-              <span className="disp" style={{ fontSize:T.name, fontWeight:700, color:C.ink, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{n.name}</span>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-  const notReady = !L.voted ? L.label : !R.voted ? R.label : null;
+  if (key === "us")  return avg(OWNERS.filter((k) => (pg(k).votes || 0) > 0));
+  if (key === "fam") return avg(data.roster.filter((r) => !isOwner(r.key) && (pg(r.key).votes || 0) > 0).map((r) => r.key));
+  return pg(key).ratings || {};
+}
+function CompareScatter({ gender, title, data, lk, rk, sideName, sideColor }) {
+  const vetoed = new Set([...data[gender].claire.vetoed, ...data[gender].andrew.vetoed]);
+  const names = namesFor(gender, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
+  const xr = ranksOf(ratingsForSide(data, gender, lk, names), names);
+  const yr = ranksOf(ratingsForSide(data, gender, rk, names), names);
   return (
-    <div style={{ marginBottom:20 }}>
-      <div style={{ marginBottom:10, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
+    <div style={{ flex:1, minWidth:0 }}>
+      <div style={{ marginBottom:S.sm, paddingBottom:6, borderBottom:`2px solid ${gColor(gender)}` }}>
         <h3 className="disp" style={{ margin:0, fontSize:T.title, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em", color:gColor(gender) }}>{title}</h3>
       </div>
-      {notReady ? (
-        <div style={{ borderRadius:12, padding:"36px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-          <p style={{ fontSize:T.body, margin:0 }}>{notReady} hasn’t voted on the {gender === "boy" ? "boys" : "girls"} yet.</p>
-        </div>
-      ) : (
-        <div style={{ display:"flex", gap:10 }}>
-          <Column side={L} list={lList} />
-          <Column side={R} list={rList} />
-        </div>
-      )}
+      <ScatterCompare names={names} xr={xr} yr={yr} xName={sideName(lk)} yName={sideName(rk)}
+        xLabel={`${sideName(lk)} loves`} yLabel={`${sideName(rk)} loves`}
+        xColor={sideColor(lk)} yColor={sideColor(rk)} midColor={C.sage} />
     </div>
   );
 }
-// The current owner's own ranking, drag-to-reorder. Grab the ≡ handle and drag;
-// on drop we set the moved name's rating between its new neighbours (a nudge).
-// Pointer-based so it works on phone and desktop.
 function MyRankColumn({ gender, title, data, profile, onReorder }) {
   const names = namesFor(gender, data.custom, data.removed);
   const cur = data[gender][profile] || { ratings:{}, votes:0 };
@@ -6635,132 +6617,12 @@ function ManageNames({ data, profile, onVeto, onUnveto, onAddNick, onRemoveNick 
 }
 
 /* ------------------------------- trends ---------------------------------- */
-const LINE_COLORS = ["#2E4756","#C9821A","#566B36","#B5677B","#5B7493","#A4663A","#7A5BA6","#3A6EA5"];
-// Once the 8 theme colors are used, vary the stroke pattern to keep lines distinct.
-const DASHES = [null, "7 5", "1.5 4", "10 4 1.5 4"]; // solid, dashed, dotted, dash-dot
-function TrendChart({ lines, xUnit = "votes", emph = null, endLabels = false }) {
-  const W = 600, H = 240, padL = 14, padR = endLabels ? 84 : 12, padT = 12, padB = 26;
-  const allPts = lines.flatMap((l) => l.points);
-  if (!allPts.length) return null;
-  const xsAll = allPts.map((p) => p.x), ysAll = allPts.map((p) => p.y);
-  const maxX = Math.max(...xsAll, 1);
-  let minY = Math.min(...ysAll, START), maxY = Math.max(...ysAll, START);
-  if (minY === maxY) { minY -= 20; maxY += 20; } else { const p = (maxY - minY) * 0.12; minY -= p; maxY += p; }
-  const X = (v) => padL + (v / maxX) * (W - padL - padR);
-  const Y = (v) => padT + (1 - (v - minY) / (maxY - minY)) * (H - padT - padB);
-  const yticks = []; for (let i = 0; i <= 4; i++) yticks.push(minY + (maxY - minY) * i / 4);
-  const uniqX = Array.from(new Set(xsAll)).sort((a, b) => a - b);
-  const [hx, setHx] = useState(null);
-  const ref = useRef(null);
-  const onMove = (e) => {
-    const r = ref.current.getBoundingClientRect();
-    const lx = (e.clientX - r.left) * (W / r.width);
-    let best = uniqX[0], bd = Infinity;
-    uniqX.forEach((xv) => { const d = Math.abs(X(xv) - lx); if (d < bd) { bd = d; best = xv; } });
-    setHx(best);
-  };
-  const valAt = (l, xv) => {
-    let chosen = null;
-    l.points.forEach((p) => { if (p.x <= xv && (!chosen || p.x > chosen.x)) chosen = p; });
-    return chosen ? chosen.y : (l.points[0] ? l.points[0].y : null);
-  };
-  return (
-    <div ref={ref} style={{ position:"relative", borderRadius:12, padding:8, background:C.paper, border:`1px solid ${C.line}` }}
-      onMouseMove={onMove} onMouseLeave={() => setHx(null)}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width:"100%", height:"auto", display:"block" }}>
-        {yticks.map((t, i) => (
-          <line key={i} x1={padL} x2={W - padR} y1={Y(t)} y2={Y(t)} stroke={C.line} strokeDasharray="3 3" />
-        ))}
-        <text x={padL} y={H - 6} fontSize="10" fill={C.muted}>0</text>
-        <text x={W - padR} y={H - 6} fontSize="10" fill={C.muted} textAnchor="end">{maxX} {xUnit}</text>
-        {hx != null && <line x1={X(hx)} x2={X(hx)} y1={padT} y2={H - padB} stroke={C.clay} strokeWidth="1" opacity="0.5" />}
-        {(emph ? [...lines.filter((l) => l.id !== emph), ...lines.filter((l) => l.id === emph)] : lines).map((l) => {
-          const isEmph = l.id === emph;
-          return (
-            <polyline key={l.id} fill="none" stroke={l.color} strokeWidth={isEmph ? 3.6 : 2}
-              opacity={emph && !isEmph ? 0.28 : 1} strokeLinejoin="round" strokeLinecap="round"
-              strokeDasharray={l.dash === true ? "6 4" : (l.dash || undefined)}
-              points={l.points.map((p) => `${X(p.x)},${Y(p.y)}`).join(" ")} />
-          );
-        })}
-        {hx != null && lines.map((l) => {
-          const v = valAt(l, hx); return v == null ? null : <circle key={l.id} cx={X(hx)} cy={Y(v)} r="3" fill={l.color} />;
-        })}
-        {endLabels && (() => {
-          // Label each line at its OWN last point, not the right edge — so a short line
-          // (e.g. a voter with few votes) isn't labelled as if it ran flat across the axis.
-          const labs = lines.map((l) => { const last = l.points[l.points.length - 1]; return { id: l.id, name: l.name, color: l.color, x: X(last.x), y: Y(last.y) }; }).sort((a, b) => a.y - b.y);
-          for (let i = 1; i < labs.length; i++) if (labs[i].y < labs[i - 1].y + 11) labs[i].y = labs[i - 1].y + 11;
-          return labs.map((lb) => (
-            <text key={lb.id} x={Math.min(lb.x + 4, W - padR + 5)} y={lb.y + 3} fontSize="9.5" fontWeight={emph === lb.id ? 800 : 600}
-              fill={lb.color} opacity={emph && emph !== lb.id ? 0.3 : 1}>{lb.name}</text>
-          ));
-        })()}
-      </svg>
-      {hx != null && (
-        <div style={{ position:"absolute", top:8, left:48, background:C.bg, border:`1px solid ${C.line}`, borderRadius:8, padding:"6px 8px", fontSize:T.micro, pointerEvents:"none" }}>
-          <div style={{ color:C.muted, marginBottom:2 }}>after {hx} {xUnit} · highest first</div>
-          {[...lines].sort((a, b) => (valAt(b, hx) ?? 0) - (valAt(a, hx) ?? 0)).map((l) => (
-            <div key={l.id} style={{ display:"flex", alignItems:"center", gap:6 }}>
-              <span style={{ width:8, height:8, borderRadius:999, background:l.color }} />
-              <span style={{ color:C.ink }}>{l.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 const trendEmpty = (msg) => (
   <div style={{ borderRadius:12, padding:"40px 16px", textAlign:"center", background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
     <div style={{ marginBottom:8, display:"flex", justifyContent:"center" }}><Ic n="trend" s={26} c={C.line} /></div>
     <p style={{ fontSize:T.body, margin:0 }}>{msg}</p>
   </div>
 );
-function ByNameTrends({ pg, names, profileName, gender }) {
-  const ranked = [...names].sort((a, b) => (pg.ratings[b.id] ?? START) - (pg.ratings[a.id] ?? START));
-  // Stable color + pattern per name (by its rank position): first 8 are solid theme
-  // colors, then the same colors with dashed / dotted / dash-dot strokes.
-  const styleFor = (i) => ({ color: LINE_COLORS[i % LINE_COLORS.length], dash: DASHES[Math.floor(i / LINE_COLORS.length) % DASHES.length] });
-  const styleOf = (id) => styleFor(Math.max(0, ranked.findIndex((n) => n.id === id)));
-  const [sel, setSel] = useState(() => ranked.slice(0, 5).map((n) => n.id)); // top 5 by default
-  const [emph, setEmph] = useState(null);
-  // Reset to the top 5 whenever the gender (name set) changes, so a toggle never carries old names over.
-  useEffect(() => { setSel(ranked.slice(0, 5).map((n) => n.id)); setEmph(null); }, [gender]); // eslint-disable-line
-  if (!pg.history || pg.history.length < 2) return trendEmpty("Vote on a few names to start the trend lines.");
-  const lines = sel.filter((id) => ranked.some((n) => n.id === id)).map((id) => {
-    const st = styleOf(id);
-    return { id, name: findName(names, id).name, color: st.color, dash: st.dash,
-      points: [{ x: 0, y: START }, ...pg.history.map((h) => ({ x: h.m, y: h.r[id] ?? START }))] };
-  });
-  const toggle = (id) => setSel((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
-  const dashStyle = (d) => (d == null ? "solid" : d === "1.5 4" ? "dotted" : "dashed");
-  return (
-    <div>
-      <p style={{ fontSize:T.meta, marginBottom:8, color:C.muted }}>
-        {profileName}’s combined ranking over {pg.votes} votes.
-      </p>
-      <TrendChart lines={lines} emph={emph} endLabels />
-      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
-        <button onClick={() => setSel(ranked.slice(0, 5).map((n) => n.id))} className="lift"
-          style={{ fontSize:T.meta, padding:"4px 12px", borderRadius:R.card, fontWeight:700, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>Top 5</button>
-        {ranked.map((n, i) => {
-          const on = sel.includes(n.id); const st = styleOf(n.id);
-          return (
-            <button key={n.id} onClick={() => toggle(n.id)} onDoubleClick={() => setSel([n.id])}
-              onMouseEnter={() => on && setEmph(n.id)} onMouseLeave={() => setEmph((e) => (e === n.id ? null : e))}
-              className="lift" style={{ display:"flex", alignItems:"center", gap:6, fontSize:T.meta, padding:"4px 10px", borderRadius:R.card, fontWeight:600, border:"1px solid transparent",
-              ...(on ? { background: st.color, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>
-              <span style={{ opacity:0.6, fontWeight:700 }}>{i + 1}</span>
-              {n.name}
-              {on && st.dash && <span style={{ width:14, height:0, borderTop:`2px ${dashStyle(st.dash)} #fff` }} />}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 // Scatter that plots each name by two rank maps, with named directional axes:
 // further right = more loved on the x axis, higher = more loved on the y axis.
 function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = C.ink, midColor = C.sage, xLabel = `${xName} loves`, yLabel = `${yName} loves` }) {
@@ -6805,111 +6667,6 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
     </div>
   );
 }
-// One scatter, any two sides. This replaces the separate "Neely vs Stevenson" and
-// "Fam vs Neely-Stevenson" views, which were the same component wired to fixed
-// inputs — now you pick both ends, so you can also ask "me vs my sister".
-function ScatterView({ data, gender, names }) {
-  const voted = (k) => data[gender][k] && data[gender][k].votes > 0;
-  const guests = data.roster.filter((p) => !isOwner(p.key) && voted(p.key)).map((p) => p.key);
-  const sides = [
-    { key:"us",  name:"Us",             color:"#E3B23C", ok: voted("claire") || voted("andrew") },
-    { key:"fam", name:"Fam & friends",  color:"#3F6CA3", ok: guests.length > 0 },
-    ...data.roster.filter((p) => voted(p.key)).map((p) => ({ key:p.key, name:p.name, color:pColor(p.key), ok:true })),
-  ].filter((x) => x.ok);
-  const [xKey, setXKey] = useState("claire");
-  const [yKey, setYKey] = useState("andrew");
-  const has = (k) => sides.some((x) => x.key === k);
-  const xk = has(xKey) ? xKey : (sides[0] || {}).key;
-  const yk = has(yKey) && yKey !== xk ? yKey : (sides.find((x) => x.key !== xk) || {}).key;
-  if (sides.length < 2) return trendEmpty("Once two of you have voted, this maps where you agree and where you clash.");
-  // Ratings for one side: an individual's own, or an equal-weight average of a group.
-  const ratingsFor = (key) => {
-    if (key === "us") {
-      const c = data[gender].claire, a = data[gender].andrew;
-      const both = c.votes > 0 && a.votes > 0;
-      const out = {}; names.forEach((n) => {
-        out[n.id] = both ? ((c.ratings[n.id] ?? START) + (a.ratings[n.id] ?? START)) / 2
-                         : ((c.votes > 0 ? c.ratings[n.id] : a.ratings[n.id]) ?? START); });
-      return out;
-    }
-    if (key === "fam") {
-      const out = {}; names.forEach((n) => {
-        const rs = guests.filter((k) => data[gender][k].ratings[n.id] != null);
-        out[n.id] = rs.length ? rs.reduce((t, k) => t + data[gender][k].ratings[n.id], 0) / rs.length : START; });
-      return out;
-    }
-    return data[gender][key].ratings;
-  };
-  const side = (k) => sides.find((x) => x.key === k) || {};
-  const Pick = ({ label, sel, onPick, other }) => (
-    <div style={{ display:"flex", flexWrap:"wrap", gap:S.xs, alignItems:"center" }}>
-      <span style={{ ...LABEL, color:C.muted, minWidth:48 }}>{label}</span>
-      {sides.filter((x) => x.key !== other).map((x) => (
-        <button key={x.key} onClick={() => onPick(x.key)} className="lift"
-          style={{ padding:"4px 11px", borderRadius:R.pill, fontSize:T.meta, fontWeight:700, border:`1px solid ${sel === x.key ? "transparent" : C.line}`,
-            ...(sel === x.key ? { background:x.color, color:"#fff" } : { background:C.paper, color:C.muted }) }}>{x.name}</button>
-      ))}
-    </div>
-  );
-  const xr = ranksOf(ratingsFor(xk), names), yr = ranksOf(ratingsFor(yk), names);
-  return (
-    <div>
-      <div style={{ display:"flex", flexDirection:"column", gap:S.xs, marginBottom:S.md }}>
-        <Pick label="Across" sel={xk} onPick={setXKey} other={yk} />
-        <Pick label="Up" sel={yk} onPick={setYKey} other={xk} />
-      </div>
-      <p style={{ fontSize:T.meta, marginBottom:S.sm, color:C.muted }}>
-        Each name by <b style={{ color:side(xk).color }}>{side(xk).name}</b>’s rank (further right = they love it) and <b style={{ color:side(yk).color }}>{side(yk).name}</b>’s (higher = they love it). Green means you agree.
-      </p>
-      <ScatterCompare names={names} xr={xr} yr={yr} xName={side(xk).name} yName={side(yk).name}
-        xLabel={`${side(xk).name} loves`} yLabel={`${side(yk).name} loves`}
-        xColor={side(xk).color} yColor={side(yk).color} midColor={C.sage} />
-    </div>
-  );
-}
-// Merge Claire's and Andrew's vote histories by time into one combined-rating
-// timeline, so "Compare names" shows the couple's trajectory, not one person's.
-function combinePg(data, gender, names) {
-  const c = data[gender].claire, a = data[gender].andrew;
-  const evs = [];
-  (c.history || []).forEach((h) => evs.push({ t: h.t || 0, who: "c", r: h.r }));
-  (a.history || []).forEach((h) => evs.push({ t: h.t || 0, who: "a", r: h.r }));
-  evs.sort((x, y) => x.t - y.t);
-  let lc = {}, la = {};
-  const history = evs.map((e, i) => {
-    if (e.who === "c") lc = e.r; else la = e.r;
-    const r = {};
-    names.forEach((n) => { r[n.id] = Math.round(((lc[n.id] ?? START) + (la[n.id] ?? START)) / 2); });
-    return { m: i + 1, t: e.t, r };
-  });
-  const ratings = {};
-  names.forEach((n) => { ratings[n.id] = ((c.ratings[n.id] ?? START) + (a.ratings[n.id] ?? START)) / 2; });
-  return { ratings, history, votes: (c.votes || 0) + (a.votes || 0), vetoed: [], starred: [] };
-}
-function Trends({ data, profile }) {
-  const [mode, setMode] = useState("byName");
-  const [g, setG] = useState("girl");
-  // Drop names vetoed by either owner; vetoed names shouldn't appear anywhere in Trends.
-  const vetoed = new Set([...data[g].claire.vetoed, ...data[g].andrew.vetoed]);
-  const names = namesFor(g, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
-  const modes = [["byName","Names over time"],["agree","Who likes what"]];
-  return (
-    <div>
-      <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
-        <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={setG} active={gColor} />
-        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-          {modes.map(([k, label]) => (
-            <button key={k} onClick={() => setMode(k)} className="lift" style={{ padding:"6px 12px", borderRadius:R.card, fontSize:T.body, fontWeight:700, border:"1px solid transparent",
-              ...(mode === k ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.muted, borderColor:C.line }) }}>{label}</button>
-          ))}
-        </div>
-      </div>
-      {mode === "byName" && <ByNameTrends key={g} gender={g} pg={combinePg(data, g, names)} names={names} profileName={"Claire & Andrew"} />}
-      {mode === "agree" && <ScatterView data={data} gender={g} names={names} />}
-    </div>
-  );
-}
-
 /* ---------------------- "For you" suggestions ---------------------------- */
 function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore, onAddNick, onRemoveNick }) {
   const [g, setG] = useState(initialGender || "girl");

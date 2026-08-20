@@ -66,7 +66,8 @@ command — or run `npm run build` as the build command.)
   - `MEANING` — one-line origin/meaning per name.
   - `approxRank()` / `rankToPct()` — calibration between % of births and rank.
   - `tierOf()` — popularity tier labels/colors.
-- **Views (tabs):** Vote, Rankings, Trends, All.
+- **Views (tabs):** Vote, Name ideas, Rankings. (Trends was removed — its Elo-over-
+  time chart wasn't decision-useful; its scatter became Rankings' "Compare" mode.)
 
 ## Design system — use the tokens, never a literal
 Defined at the top of app.jsx next to the `C` palette, mirrored as CSS custom
