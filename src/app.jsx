@@ -6814,7 +6814,10 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
   };
   return (
     <div style={{ borderRadius:R.card, padding:S.md, marginBottom:S.lg, background:C.paper, border:`1px solid ${C.line}` }}>
-      <div style={{ ...LABEL, color:C.ink, marginBottom:S.sm }}>Tune your taste</div>
+      <div style={{ ...LABEL, color:C.ink }}>Tune your taste</div>
+      <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.xs}px 0 ${S.sm}px`, lineHeight:1.5 }}>
+        These teach your name suggestions below. If you want to add a name to the voting pool, use the <b>+ Add name</b> button above.
+      </p>
       <div style={{ display:"flex", gap:S.sm }}>
         <input value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
@@ -6822,7 +6825,7 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
           style={{ flex:1, minWidth:0, padding:"8px 10px", borderRadius:R.card, background:C.bg,
             border:`1px solid ${C.line}`, color:C.ink, fontSize:T.body }} />
         <button onClick={submit} className="lift"
-          style={{ padding:"8px 16px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:accent, color:"#fff" }}>Add</button>
+          style={{ padding:"8px 16px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:accent, color:"#fff" }}>Teach</button>
       </div>
       {ids.length > 0 && (
         <button onClick={() => setShowAdded((v) => !v)} className="lift" aria-expanded={showAdded}
@@ -6873,9 +6876,6 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
           </div>
         </div>
       )}
-      <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.sm}px 0 0`, lineHeight:1.5 }}>
-        These teach your suggestions below. Use the <b>+ Add name</b> button above to add a name to the voting candidates.
-      </p>
       {children && (
         <div style={{ marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
           <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Or pick the one you like better</div>
@@ -6974,7 +6974,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
         {votes < 4 && tuned < 3
           ? <>New names that match the <b>style</b> of your starting list. Use <b>Tune your taste</b> above, or just vote, and these retune to <b>your</b> taste.</>
-          : <>Tuned to your votes, stars, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>Add</b> to drop one into voting.</>}
+          : <>Tuned to your votes, stars, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>Add to voting pool</b> to put one in front of everyone.</>}
       </p>
 
       {lastAdded && (
@@ -7023,7 +7023,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                 <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"stretch", gap:6 }}>
                   <button onClick={() => add(item)} className="lift"
                     style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"8px 14px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:gColor(g), color:"#fff" }}>
-                    <Ic n="plus" s={14} c="#fff" /> Add
+                    <Ic n="plus" s={14} c="#fff" /> Add to voting pool
                   </button>
                   <button onClick={() => dismiss(item)} className="lift"
                     style={{ fontSize:T.micro, fontWeight:600, padding:"4px 10px", borderRadius:R.card, background:"transparent", color:C.muted }}>
