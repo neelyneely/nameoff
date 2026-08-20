@@ -6329,15 +6329,13 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   const [leftKey, setLeftKey] = useState("claire");
   const [rightKey, setRightKey] = useState("andrew");
   // "Everyone" averages every voter equally by default; toggle people off to see
-  // what a subset of the family thinks. Each chip carries the person's vote count,
-  // because someone with 6 votes moves the average as hard as someone with 200.
+  // what a subset of the family thinks.
   const [who, setWho] = useState(null);            // null = everyone
   const whoSet = who || voters.map((p) => p.key);
   const toggleWho = (k) => setWho(() => {
     const cur = whoSet.includes(k) ? whoSet.filter((x) => x !== k) : [...whoSet, k];
     return cur.length ? cur : whoSet;              // never let the list go empty
   });
-  const voteCount = (k) => ((data.boy[k] || {}).votes || 0) + ((data.girl[k] || {}).votes || 0);
   const sideValid = (k) => sides.some((s) => s.key === k);
   const lk = sideValid(leftKey) ? leftKey : (sides[0] ? sides[0].key : null);
   const rk = sideValid(rightKey) && rightKey !== lk ? rightKey : (sides.find((s) => s.key !== lk) || sides[0] || {}).key;
@@ -6382,7 +6380,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
                 style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 11px", borderRadius:R.pill, fontSize:T.meta, fontWeight:700,
                   border:`1px solid ${on ? "transparent" : C.line}`,
                   ...(on ? { background:pColor(v.key), color:"#fff" } : { background:C.paper, color:C.muted }) }}>
-                {v.name}{isOwner(v.key) && <span style={{ opacity:0.65, fontWeight:600 }}>{voteCount(v.key)}</span>}
+                {v.name}
               </button>
             );
           })}
