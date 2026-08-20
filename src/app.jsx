@@ -4461,7 +4461,9 @@ const sylOf = (raw) => {
 // picked. `lean` comes from the list they were looking at when they typed it.
 const derivedFeat = (raw, gender, tags) => ({
   end: endOf(raw), syl: sylOf(raw), s: tags || [],
-  lean: gender === "boy" ? "b" : "g",
+  // No gender passed means we couldn't place it: call it unisex rather than
+  // guessing, and let it teach both lists.
+  lean: gender === "boy" ? "b" : gender === "girl" ? "g" : "u",
 });
 // How hard a typed favourite pulls the model. In band with what's already there:
 // a name rated 1700 over 4+ matches is 2.5, a veto is -4, a doubled-up Tune
@@ -5362,48 +5364,68 @@ function App() {
   // header's "+ Add name" is what puts a name in front of everyone.
   // Returns the id it stored, or null if it declined, so the caller knows whether
   // to follow up asking for vibe tags.
-  const addLike = (gender, raw, tags) => {
+  // The name decides its own gender: FEAT knows whether it leans girl, boy or
+  // unisex, so you don't have to be on the right tab first. Anything unisex — or
+  // that we've never heard of — lands on BOTH lists, because a name we can't
+  // place shouldn't be guessed into one.
+  const likeGenders = (id) => {
+    const lean = FEAT[id] ? FEAT[id].lean : "u";
+    return lean === "b" ? ["boy"] : lean === "g" ? ["girl"] : ["boy", "girl"];
+  };
+  const addLike = (raw, tags) => {
     const name = (raw || "").trim().replace(/\s+/g, " ");
     if (!name) return null;
     const id = slug(name);
+    const gens = likeGenders(id);
     const next = clone(dataRef.current);
-    const cur = next[gender][profile];
-    const likes = { ...(cur.likes || {}) };
-    if (likes[id]) return id;                       // already on the list
     // A name that's already in the rotation has real vote evidence behind it;
     // recording it here too would just double-count the same opinion.
-    const onRoster = namesFor(gender, next.custom, next.removed)
-      .some((n) => n.id === id || slug(n.name) === id);
+    const onRoster = gens.some((g) => namesFor(g, next.custom, next.removed)
+      .some((n) => n.id === id || slug(n.name) === id));
     if (onRoster) { showToast(`${name} is already in your voting list`); return null; }
-    likes[id] = FEAT[id] ? { n: name, t: Date.now() }
-                         : { n: name, t: Date.now(), f: derivedFeat(name, gender, tags || []) };
-    cur.likes = likes;
+    const entry = FEAT[id] ? { n: name, t: Date.now() }
+                           : { n: name, t: Date.now(), f: derivedFeat(name, null, tags || []) };
+    const updates = {};
+    gens.forEach((g) => {
+      const cur = next[g][profile];
+      if ((cur.likes || {})[id]) return;
+      cur.likes = { ...(cur.likes || {}), [id]: entry };
+      updates[kCore(g, profile)] = coreOf(cur);
+    });
     dataRef.current = next; setData(next);
-    save({ [kCore(gender, profile)]: coreOf(cur) });
+    if (Object.keys(updates).length) save(updates);
     return id;
   };
-  const removeLike = (gender, id) => {
+  const removeLike = (id) => {
     const next = clone(dataRef.current);
-    const cur = next[gender][profile];
-    const likes = { ...(cur.likes || {}) };
-    const gone = likes[id];
-    delete likes[id];
-    cur.likes = likes;
+    const updates = {}; let gone = null;
+    ["boy", "girl"].forEach((g) => {
+      const cur = next[g][profile];
+      if (!(cur.likes || {})[id]) return;
+      gone = gone || cur.likes[id];
+      const likes = { ...cur.likes }; delete likes[id];
+      cur.likes = likes;
+      updates[kCore(g, profile)] = coreOf(cur);
+    });
+    if (!gone) return;
     dataRef.current = next; setData(next);
-    save({ [kCore(gender, profile)]: coreOf(cur) });
-    if (gone) showToast(`Removed ${gone.n || id}`, () => addLike(gender, gone.n || id, (gone.f || {}).s));
+    save(updates);
+    showToast(`Removed ${gone.n || id}`, () => addLike(gone.n || id, (gone.f || {}).s));
   };
   // Re-tag a name we had no row for. Only meaningful for derived entries.
-  const setLikeTags = (gender, id, tags) => {
+  const setLikeTags = (id, tags) => {
     const next = clone(dataRef.current);
-    const cur = next[gender][profile];
-    const likes = { ...(cur.likes || {}) };
-    const cur1 = likes[id];
-    if (!cur1 || !cur1.f) return;
-    likes[id] = { ...cur1, f: { ...cur1.f, s: tags || [] } };
-    cur.likes = likes;
+    const updates = {};
+    ["boy", "girl"].forEach((g) => {
+      const cur = next[g][profile];
+      const was = (cur.likes || {})[id];
+      if (!was || !was.f) return;
+      cur.likes = { ...cur.likes, [id]: { ...was, f: { ...was.f, s: tags || [] } } };
+      updates[kCore(g, profile)] = coreOf(cur);
+    });
+    if (!Object.keys(updates).length) return;
     dataRef.current = next; setData(next);
-    save({ [kCore(gender, profile)]: coreOf(cur) });
+    save(updates);
   };
 
   const dismissSuggestion = (g, id, reason) => {
@@ -6789,16 +6811,16 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
  * the spelling (see endOf/sylOf) plus whatever vibe tags you pick, which is the
  * heaviest feature in the model and the one thing we can't infer.
  * Nothing in this box enters voting — that distinction is worth keeping clear. */
-function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
+function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
   const [val, setVal] = useState("");
   const [tagging, setTagging] = useState(null); // id whose vibe we're asking about
   const [showAdded, setShowAdded] = useState(false); // the list you've already given it
   const ids = Object.keys(likes || {});
-  const accent = gColor(gender);
+  const accent = C.sage;   // typed names aren't one gender any more, so neither is this
   const submit = () => {
     const v = val.trim();
     if (!v) return;
-    const id = onAdd(gender, v);
+    const id = onAdd(v);
     setVal("");
     if (!id) return;
     setShowAdded(true);                          // so you can see it landed
@@ -6810,7 +6832,7 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
     const has = pendingTags.includes(t);
     const next = has ? pendingTags.filter((x) => x !== t)
                      : [...pendingTags, t].slice(-2);   // two tags is plenty
-    onTag(gender, tagging, next);
+    onTag(tagging, next);
   };
   return (
     <div style={{ borderRadius:R.card, padding:S.md, marginBottom:S.lg, background:C.paper, border:`1px solid ${C.line}` }}>
@@ -6848,7 +6870,7 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
                 {derived && l.f.s && l.f.s.length > 0 && (
                   <span style={{ fontSize:T.micro, color:C.muted }}>{l.f.s.map((t) => STYLE_LABEL[t]).filter(Boolean).join(", ")}</span>
                 )}
-                <button onClick={() => { setTagging((cur) => (cur === id ? null : cur)); onRemove(gender, id); }}
+                <button onClick={() => { setTagging((cur) => (cur === id ? null : cur)); onRemove(id); }}
                   className="lift" aria-label={`Remove ${l.n || id}`} title="Remove"
                   style={{ display:"flex", background:"none", padding:0, color:C.clay }}><Ic n="x" s={10} c={C.clay} /></button>
               </span>
@@ -6878,7 +6900,10 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
       )}
       {children && (
         <div style={{ marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
-          <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Or pick the one you like better</div>
+          <div style={{ display:"flex", alignItems:"center", gap:S.sm, marginBottom:S.sm }}>
+            <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or pick the one you like better</span>
+            <span className="disp" style={{ ...LABEL, letterSpacing:"0.14em", color:gColor(tuneGender) }}>{gLabel(tuneGender)}</span>
+          </div>
           {children}
         </div>
       )}
@@ -6895,6 +6920,12 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const [showPassed, setShowPassed] = useState(false);
   const [round, setRound] = useState(0);
   const [pair, setPair] = useState(null);
+  // The tuner alternates genders on its own — two boys, two girls — the way the
+  // Vote tab does, so it keeps teaching both models no matter which list you're
+  // reading below. It does NOT follow the Girls/Boys toggle, which now only
+  // filters the suggestions.
+  const [tuneG, setTuneG] = useState(initialGender || "girl");
+  const [tuneDone, setTuneDone] = useState(0);
   const votes = data[g][profile] ? (data[g][profile].votes || 0) : 0;
   const explore = (data[g][profile] || {}).explore || {};
   const dismissed = (data[g][profile] || {}).dismissed || {};
@@ -6904,11 +6935,14 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
 
   // (Re)pick a mash-up whenever the gender changes or a reaction advances the round.
   useEffect(() => {
-    setPair(pickExplorePair(data, profile, g, suggestNames(data, profile, g)));
-  }, [g, round, profile]); // eslint-disable-line
+    setPair(pickExplorePair(data, profile, tuneG, suggestNames(data, profile, tuneG)));
+  }, [tuneG, round, profile]); // eslint-disable-line
 
   const react = (kind) => {
-    if (pair) onReact(g, [pair[0].id, pair[1].id], kind);
+    if (pair) onReact(tuneG, [pair[0].id, pair[1].id], kind);
+    const done = tuneDone + 1;
+    if (done >= BLOCK) { setTuneG((cur) => (cur === "girl" ? "boy" : "girl")); setTuneDone(0); }
+    else setTuneDone(done);
     setRound((r) => r + 1);
   };
   const add = (item) => {
@@ -6933,17 +6967,17 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // feature, but the suggestions you can actually act on come first.
   const tuneCard = pair ? (
         <div>
-          <div style={{ display:"flex", gap:10, alignItems:"stretch" }}>
+          <div style={{ display:"flex", gap:10, alignItems:"stretch" }} className="cards">
             {pair.map((c, i) => {
               const f = FEAT[c.id];
               return (
                 <div key={c.id} role="button" tabIndex={0} onClick={() => react(i === 0 ? "a" : "b")}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); react(i === 0 ? "a" : "b"); } }}
                   className="lift"
-                  style={{ flex:1, minWidth:0, textAlign:"left", padding:"11px 12px", borderRadius:12, background:C.paper, border:`1px solid ${C.line}`, cursor:"pointer" }}>
+                  style={{ flex:1, minWidth:0, textAlign:"left", padding:"11px 12px", borderRadius:R.card, background:gCard(tuneG), border:"1px solid transparent", cursor:"pointer" }}>
                   <div style={{ fontFamily:DISPLAY, fontSize:T.name, color:C.ink, lineHeight:1.1 }}>{c.name}</div>
                   {SAY[c.id] && <div style={{ fontSize:T.micro, color:C.clay, marginTop:2, fontStyle:"italic" }}>“{SAY[c.id]}”</div>}
-                  <div style={{ fontSize:T.meta, color:C.muted, margin:"3px 0 0" }}>
+                  <div style={{ fontSize:T.meta, color:C.ink, opacity:0.7, margin:"3px 0 0" }}>
                     {cleanMeaning(MEANING[c.id]) || ""}{f.lean === "u" ? " · unisex" : ""}
                   </div>
                 </div>
@@ -6963,14 +6997,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
 
   return (
     <div>
-      <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center", flexWrap:"wrap" }}>
+      <TuneBox likes={{ ...((data.boy[profile] || {}).likes || {}), ...((data.girl[profile] || {}).likes || {}) }}
+        tuneGender={tuneG} onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike}>{tuneCard}</TuneBox>
+
+
+      <div style={{ display:"flex", gap:8, margin:"0 0 10px", alignItems:"center", flexWrap:"wrap" }}>
         <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={(v) => { setG(v); setLastAdded(null); }} active={gColor} />
       </div>
-
-      <TuneBox likes={(data[g][profile] || {}).likes || {}} gender={g}
-        onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike}>{tuneCard}</TuneBox>
-
-
       <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
         {votes < 4 && tuned < 3
           ? <>New names that match the <b>style</b> of your starting list. Use <b>Tune your taste</b> above, or just vote, and these retune to <b>your</b> taste.</>
