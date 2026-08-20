@@ -6076,7 +6076,12 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
   const fp = funcPop(n.id, gender);
   const popNicks = (fp ? fp.nicks : []).filter((nk) => nk.rank != null || nk.pct != null);
   // Picking is a plain tap on the card — no swipe, so vertical scrolling stays normal.
-  // A guest's Hard pass takes two taps: the first explains what it does, the second commits.
+  // Taking a name OUT always takes two taps, whichever seat you're in: the first
+  // says what's about to happen, the second commits, and it disarms itself after
+  // four seconds. The button lives inside a card whose whole surface votes, so on
+  // a phone a single tap here is far too easy to do by accident — and an owner's
+  // veto is the most destructive control in the app, since it removes the name
+  // for both of you at once.
   const [armed, setArmed] = useState(false);
   useEffect(() => { setArmed(false); }, [n.id]);
   useEffect(() => {
@@ -6096,19 +6101,19 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
         opacity: dim ? 0.4 : 1, transform: chosen ? "translateY(-3px)" : "none", transition: "transform .22s ease, border-color .15s ease",
         cursor: picked ? "default" : "pointer",
       }}>
-      {(guest && armed)
+      {armed
         ? <button onClick={(e) => { e.stopPropagation(); setArmed(false); onVeto(); }} disabled={!!picked}
-            aria-label={`Confirm: hard pass on ${n.name} and take it off your list for good`}
+            aria-label={`Confirm: ${vetoWord.toLowerCase()} ${n.name}`}
             className="lift" style={{ position:"absolute", top:S.md, left:S.md, right:S.md, display:"flex", alignItems:"center", justifyContent:"center",
-              gap:S.xs, fontSize:T.micro, fontWeight:700, padding:"5px 10px", borderRadius:R.pill, color:"#fff", background:C.clay }}>
-            <Ic n="ban" s={12} c="#fff" /> Tap again — removes it for good
+              gap:S.xs, fontSize:T.micro, fontWeight:700, padding:"8px 10px", minHeight:36, borderRadius:R.pill, color:"#fff", background:C.clay }}>
+            <Ic n="ban" s={12} c="#fff" /> {guest ? "Tap again — removes it for good" : "Tap again — removes it for both of you"}
           </button>
-        : <button onClick={(e) => { e.stopPropagation(); if (guest) setArmed(true); else onVeto(); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
+        : <button onClick={(e) => { e.stopPropagation(); setArmed(true); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
             title={guest
               ? "Hard pass — takes this name off your list for good, and Claire and Andrew can see it. Just want a different pair? Pick either card, or use “Can’t decide, skip”."
-              : "Veto — takes it out for both of you"}
-            className="lift" style={{ position:"absolute", top:S.md, right:S.md, display:"flex", alignItems:"center", gap:S.xs, fontSize:T.micro, fontWeight:700,
-              padding:"4px 10px", borderRadius:R.pill, color:C.clay, background:"rgba(255,255,255,0.55)" }}>
+              : "Veto — takes it out for both of you. Takes two taps."}
+            className="lift" style={{ position:"absolute", top:S.md, right:S.md, display:"flex", alignItems:"center", justifyContent:"center", gap:S.xs,
+              fontSize:T.micro, fontWeight:700, padding:"0 12px", minHeight:36, borderRadius:R.pill, color:C.clay, background:"rgba(255,255,255,0.55)" }}>
             <Ic n="ban" s={12} /> {vetoWord}
           </button>}
       {/* Four rows, and only the name is loud. Meaning, the popularity chart, the
@@ -6893,7 +6898,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   }, [g, round, profile]); // eslint-disable-line
 
   const react = (kind) => {
-    if (pair && kind !== "skip") onReact(g, [pair[0].id, pair[1].id], kind);
+    if (pair) onReact(g, [pair[0].id, pair[1].id], kind);
     setRound((r) => r + 1);
   };
   const add = (item) => {
@@ -6979,9 +6984,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
             </button>
             <button onClick={() => react("pass")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color:C.clay }}>
               <Ic n="ban" s={13} c={C.clay} /> Hate both
-            </button>
-            <button onClick={() => react("skip")} className="lift" style={{ fontSize:T.meta, fontWeight:600, padding:"7px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>
-              Skip
             </button>
           </div>
         </div>
