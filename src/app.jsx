@@ -6816,7 +6816,7 @@ function TuneBox({ likes, gender, onAdd, onRemove, onTag, children }) {
     <div style={{ borderRadius:R.card, padding:S.md, marginBottom:S.lg, background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ ...LABEL, color:C.ink }}>Tune your taste</div>
       <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.xs}px 0 ${S.sm}px`, lineHeight:1.5 }}>
-        These teach your name suggestions below. If you want to add a name to the voting pool, use the <b>+ Add name</b> button above.
+        These teach your name suggestions below. If you want to add a name to the voting pool for everyone, use the <b>+ Add name</b> button above.
       </p>
       <div style={{ display:"flex", gap:S.sm }}>
         <input value={val} onChange={(e) => setVal(e.target.value)}
@@ -6974,7 +6974,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
         {votes < 4 && tuned < 3
           ? <>New names that match the <b>style</b> of your starting list. Use <b>Tune your taste</b> above, or just vote, and these retune to <b>your</b> taste.</>
-          : <>Tuned to your votes, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>Add to voting pool</b> to put one in front of everyone.</>}
+          : <>Tuned to your votes, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}.</>}
       </p>
 
       {lastAdded && (
