@@ -6862,7 +6862,7 @@ function LikedNames({ likes, gender, onAdd, onRemove, onTag }) {
         </div>
       )}
       <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.sm}px 0 0`, lineHeight:1.5 }}>
-        These teach your suggestions below — they don’t join voting. Use <b>+ Add name</b> up top for that.
+        These teach your suggestions below. Use the <b>+ Add name</b> button above to add a name to the voting candidates.
       </p>
     </div>
   );
