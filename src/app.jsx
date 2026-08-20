@@ -6813,11 +6813,6 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
           );
         })}
       </svg>
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:T.micro, fontWeight:700 }}>
-        <span style={{ color:xColor }}>{xName}</span>
-        <span style={{ flex:1, height:8, borderRadius:999, background:`linear-gradient(to right, ${xColor}, ${midColor}, ${yColor})` }} />
-        <span style={{ color:yColor }}>{yName}</span>
-      </div>
     </div>
   );
 }
