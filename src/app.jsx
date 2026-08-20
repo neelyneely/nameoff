@@ -4491,7 +4491,7 @@ function suggestNames(data, profile, gender) {
     const e = explore[id]; if (!e) return 0;
     return Math.max(-5, Math.min(5, e.s || 0)) * Math.min(1, (e.n || 0) / 2);
   };
-  // 1. Per-name training weight: roster from Elo/stars/vetoes; explored
+  // 1. Per-name training weight: roster from Elo/vetoes; explored
   //    candidates from their mash-up signal (this is what widens the model
   //    beyond the narrow roster — reacting to a Norse name teaches all Norse).
   const w = {};
@@ -6974,7 +6974,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       <p style={{ fontSize:T.body, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
         {votes < 4 && tuned < 3
           ? <>New names that match the <b>style</b> of your starting list. Use <b>Tune your taste</b> above, or just vote, and these retune to <b>your</b> taste.</>
-          : <>Tuned to your votes, stars, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>Add to voting pool</b> to put one in front of everyone.</>}
+          : <>Tuned to your votes, vetoes{tuned ? <> &amp; <b>{tuned}</b> tune{tuned === 1 ? "" : "s"}</> : null}. Tap <b>Add to voting pool</b> to put one in front of everyone.</>}
       </p>
 
       {lastAdded && (
