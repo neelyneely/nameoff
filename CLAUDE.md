@@ -79,6 +79,17 @@ command — or run `npm run build` as the build command.)
   - `MEANING` — one-line origin/meaning per name.
   - `approxRank()` / `rankToPct()` — calibration between % of births and rank.
   - `tierOf()` — popularity tier labels/colors.
+  - `tasteProfile()` — what one voter's model has learned, `{key: {v, n}}`.
+    **Never render `v` to a person.** These are ranking scores, not opinions: a
+    veto trains at −4 and a mash-up loser at −0.6, so nearly every value comes
+    out negative and a naive "things you both like" filter returns *nothing*.
+    Only a value's position against that same person's own baseline means
+    anything — always go through `normaliseTaste()`, which z-scores within each
+    feature kind. It also drops `nick` (2 buckets) and `lean` (3): too few
+    buckets to normalise, so they pin every voter to ±1 and show up as fake
+    agreement. `TASTE_MIN_N` (5) keeps one-off endings from dominating on noise.
+    Signal lives mostly in `explore` (mash-up tallies), not the ~24-name roster,
+    so a realistic test profile has to be built from tunes.
   - `endOf()` / `sylOf()` — features for a name no table knows. **`endOf` is the
     plain last letter.** That looks too naive but it was measured against all
     2036 curated rows: last-letter 99.4%, last-letter-plus-digraphs 98.6%, and a

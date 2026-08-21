@@ -147,5 +147,68 @@ eq("profile saved before this change still loads", run(`(()=>{
   return JSON.stringify(d.girl.claire.likes)==="{}" && suggestNames(d,"claire","girl").length>0;
 })()`), true);
 
+group("taste comparison");
+
+// A profile with real signal. Note WHERE the signal has to go: tasteProfile
+// trains on the roster (~24 names) and on `explore` tallies — the mash-up
+// reactions — so a realistic profile is mostly explore, which is exactly what
+// the live store looks like (Claire: 151 votes, 658 tunes).
+run(`globalThis.TD = (() => {
+  const d = assemble({});
+  const pg = d.girl.claire;
+  [...CAND.girl, ...CAND.unisex].slice(0, 120).forEach((c, i) => {
+    // mash-ups hand out one winner and one loser, so the tallies skew negative
+    pg.explore[c.id] = { s: (i % 3 === 0) ? 1.0 : -0.6, n: 2 };
+  });
+  namesFor("girl", [], []).slice(0, 3).forEach((n) => pg.vetoed.push(n.id));
+  pg.votes = 60;
+  return d;
+})()`);
+
+eq("tasteProfile returns a count alongside each weight", run(`(()=>{
+  const t = tasteProfile(TD, "claire", "girl");
+  const k = Object.keys(t)[0];
+  return typeof t[k].v === "number" && typeof t[k].n === "number";
+})()`), true);
+
+eq("normalise drops the 2- and 3-bucket kinds that always land on ±1", run(`(()=>{
+  const n = normaliseTaste(tasteProfile(TD, "claire", "girl"));
+  return Object.keys(n).some(k => k.startsWith("nick:") || k.startsWith("lean:"));
+})()`), false);
+
+eq("normalise drops features under the sample floor", run(`(()=>{
+  const raw = tasteProfile(TD, "claire", "girl");
+  const n = normaliseTaste(raw);
+  return Object.keys(n).every(k => raw[k].n >= TASTE_MIN_N);
+})()`), true);
+
+// The bug this whole design exists to avoid: raw weights are nearly all negative,
+// so "what do you both like" reads as empty if you compare them directly.
+eq("raw weights are mostly negative (why they're never shown)", run(`(()=>{
+  const t = tasteProfile(TD, "claire", "girl");
+  const vals = Object.values(t).map(x => x.v);
+  return vals.filter(v => v < 0).length > vals.length / 2;
+})()`), true);
+eq("...but normalised ones straddle zero", run(`(()=>{
+  const n = Object.values(normaliseTaste(tasteProfile(TD, "claire", "girl")));
+  return n.some(v => v > 0) && n.some(v => v < 0);
+})()`), true);
+
+eq("a voter with almost nothing yields too little to compare", run(`(()=>{
+  const d = assemble({});
+  d.girl.claire.votes = 1;
+  return Object.keys(normaliseTaste(tasteProfile(d, "claire", "girl"))).length < TASTE_MIN_BUCKETS;
+})()`), true);
+
+eq("sideMembers resolves the group sides", run(`(()=>{
+  const d = assemble({});
+  d.girl.claire.votes = 3; d.girl.andrew.votes = 3;
+  return JSON.stringify(sideMembers(d, "girl", "us")) === '["claire","andrew"]'
+      && JSON.stringify(sideMembers(d, "girl", "haley")) === '["haley"]';
+})()`), true);
+
+eq("labels read as words, not feature keys", run(`JSON.stringify([tasteLabel("s:vin"), tasteLabel("o:ir"), tasteLabel("end:a"), tasteLabel("syl:1")])`),
+   JSON.stringify(["vintage", "Irish", "ends in -a", "1 syllable"]));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

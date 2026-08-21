@@ -4480,7 +4480,22 @@ const LIKE_AS_VOTES = 2;
 const EXPLORE_DELTAS = { a:[1.0, -0.6], b:[-0.6, 1.0], love:[1.5, 1.5], pass:[-1.5, -1.5] };
 
 // Score the candidate pool for one voter + gender. Returns [{c, sc, f}] desc.
-function suggestNames(data, profile, gender) {
+/* ---- what one voter's model has learned ---------------------------------
+ * Lifted out of suggestNames so the Compare view can read the same numbers.
+ * Returns { "s:vin": {v, n}, ... } — v is the learned weight, n how many names
+ * it was learned from.
+ *
+ * NEVER show `v` to a person directly. These are ranking scores, not opinions:
+ * a veto trains at -4 and a mash-up loser at -0.6, so almost every value comes
+ * out negative and "things you like" reads as empty. Only a value's position
+ * against that same person's own baseline means anything — see normaliseTaste.
+ */
+// Signed, confidence-scaled signal from the mash-up "explore" tallies.
+const exWeightIn = (explore, id) => {
+  const e = explore[id]; if (!e) return 0;
+  return Math.max(-5, Math.min(5, e.s || 0)) * Math.min(1, (e.n || 0) / 2);
+};
+function tasteProfile(data, profile, gender) {
   const pg = data[gender][profile];
   const roster = namesFor(gender, data.custom, data.removed);
   // Names this voter typed under "names you already love" — private to them.
@@ -4494,11 +4509,6 @@ function suggestNames(data, profile, gender) {
   // Names the voter passed on — hidden, but NOT trained on (the dislike
   // is usually about the specific name, not its style; see Quinn).
   const dismissed = pg.dismissed || {};
-  // Signed, confidence-scaled signal from the mash-up "explore" tallies.
-  const exWeight = (id) => {
-    const e = explore[id]; if (!e) return 0;
-    return Math.max(-5, Math.min(5, e.s || 0)) * Math.min(1, (e.n || 0) / 2);
-  };
   // 1. Per-name training weight: roster from Elo/vetoes; explored
   //    candidates from their mash-up signal (this is what widens the model
   //    beyond the narrow roster — reacting to a Norse name teaches all Norse).
@@ -4511,10 +4521,10 @@ function suggestNames(data, profile, gender) {
     if ((pg.vetoed  || []).includes(nm.id)) wt = -4;
     w[nm.id] = wt;
   });
-  Object.keys(explore).forEach((id) => { if (FEAT[id] && w[id] == null) w[id] = exWeight(id); });
+  Object.keys(explore).forEach((id) => { if (FEAT[id] && w[id] == null) w[id] = exWeightIn(explore, id); });
   // 2. Learn a preference per feature value (shrunk toward 0 when sparse).
   const acc = {};
-  const bump = (k, v) => { const a = acc[k] || (acc[k] = { s:0, n:0 }); a.s += v; a.n++; };
+  const bump = (k, v) => { const a = acc[k] || (acc[k] = { v:0, n:0 }); a.v += v; a.n++; };
   // Bumps only the features a vector actually carries, so a name we derived from
   // its spelling (no origin, no tier) trains on what we DO know instead of being
   // dropped entirely.
@@ -4536,8 +4546,71 @@ function suggestNames(data, profile, gender) {
     const known = FEAT[id];
     trainVec(known || likes[id].f, LIKE_W, known ? tierKeyFor(id, gender) : null);
   });
+  // Shrink toward zero where the evidence is thin, then hand back the count so
+  // callers can require a minimum before trusting a feature.
+  const out = {};
+  Object.keys(acc).forEach((k) => { out[k] = { v: acc[k].v / (2 + acc[k].n), n: acc[k].n }; });
+  return out;
+}
+
+// Feature kinds worth comparing between people. `nick` (2 buckets) and `lean`
+// (3) are left out on purpose: normalising them pins every voter to the same
+// ±1, so they show up as fake agreement at the top of every comparison.
+const TASTE_KINDS = ["s", "o", "tier", "syl", "end"];
+const TASTE_MIN_N = 5;   // below this, one-off endings dominate on noise
+const TASTE_MIN_BUCKETS = 3;
+const kindOf = (k) => k.slice(0, k.indexOf(":"));
+// Score each feature against the rest of ITS OWN kind for this person, so the
+// output means "further toward this than they usually are" rather than a raw
+// number that's negative for everybody.
+function normaliseTaste(acc) {
+  const out = {};
+  TASTE_KINDS.forEach((kind) => {
+    const ks = Object.keys(acc).filter((k) => kindOf(k) === kind && acc[k].n >= TASTE_MIN_N);
+    if (ks.length < TASTE_MIN_BUCKETS) return;
+    const vals = ks.map((k) => acc[k].v);
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length) || 1;
+    ks.forEach((k) => { out[k] = (acc[k].v - mean) / sd; });
+  });
+  return out;
+}
+// Average several people's normalised profiles (for the "Us" / "Fam" sides).
+// Normalise first, then average, so someone with 600 tunes doesn't drown out
+// someone with 40.
+function taste(data, keys, gender) {
+  const each = keys.map((k) => normaliseTaste(tasteProfile(data, k, gender)));
+  if (each.length === 1) return each[0];
+  const out = {}, n = {};
+  each.forEach((p) => Object.keys(p).forEach((k) => { out[k] = (out[k] || 0) + p[k]; n[k] = (n[k] || 0) + 1; }));
+  Object.keys(out).forEach((k) => { out[k] /= n[k]; });
+  return out;
+}
+// "s:vin" -> "vintage", "end:a" -> "ends in -a", and so on.
+const tasteLabel = (k) => {
+  const kind = kindOf(k), v = k.slice(k.indexOf(":") + 1);
+  if (kind === "o") return ORIGIN_LABEL[v] || v;
+  if (kind === "s") return STYLE_LABEL[v] || v;
+  if (kind === "end") return `ends in -${v}`;
+  if (kind === "syl") return `${v} syllable${v === "1" ? "" : "s"}`;
+  return v;   // tier labels already read as words
+};
+
+function suggestNames(data, profile, gender) {
+  const pg = data[gender][profile];
+  const likes = pg.likes || {};
+  const explore = pg.explore || {};
+  const dismissed = pg.dismissed || {};
+  const removed = new Set(data.removed || []);
+  // Match on the id AND the displayed spelling's slug, so a renamed roster name
+  // (Shae → Shea) doesn't come back as a "new" suggestion under its own entry;
+  // liked names are excluded too — we don't suggest what you said you love.
+  const roster = namesFor(gender, data.custom, data.removed);
+  const present = new Set(roster.flatMap((x) => [x.id, slug(x.name)]));
+  Object.keys(likes).forEach((id) => present.add(id));
+  const acc = tasteProfile(data, profile, gender);
   const learned = {};
-  Object.keys(acc).forEach((k) => { learned[k] = acc[k].s / (2 + acc[k].n); });
+  Object.keys(acc).forEach((k) => { learned[k] = acc[k].v; });   // already shrunk
   // Fade the cold-start prior on evidence of any kind, not just votes — otherwise
   // someone who types six names they love still gets the app's generic taste.
   const evidence = (pg.votes || 0) + LIKE_AS_VOTES * Object.keys(likes).length;
@@ -4555,7 +4628,7 @@ function suggestNames(data, profile, gender) {
              + TW.lean * P("lean:" + f.lean) + TW.tier * P("tier:" + tierKeyFor(c.id, gender))
              + TW.nick * P("nick:" + (f.nk ? 1 : 0));
       f.s.forEach((t) => { sc += TW.s * P("s:" + t); });
-      sc += DIRECT * exWeight(c.id);
+      sc += DIRECT * exWeightIn(explore, c.id);
       return { c, sc, f };
     })
     .sort((a, b) => b.sc - a.sc);
@@ -6471,6 +6544,49 @@ function ratingsForSide(data, gender, key, names) {
   if (key === "fam") return avg(data.roster.filter((r) => !isOwner(r.key) && (pg(r.key).votes || 0) > 0).map((r) => r.key));
   return pg(key).ratings || {};
 }
+// Which people a Compare side stands for. Mirrors ratingsForSide, but returns the
+// members rather than their ratings, because a taste profile has to be built per
+// person and averaged after.
+function sideMembers(data, gender, key) {
+  const voted = (k) => (data[gender][k] || {}).votes > 0;
+  if (key === "us") return OWNERS.filter(voted);
+  if (key === "fam") return data.roster.filter((p) => !isOwner(p.key) && voted(p.key)).map((p) => p.key);
+  return [key];
+}
+/* Where two sides' taste actually differs. The scatter above says WHICH names you
+ * disagree on; this says what the disagreement is made of — the features each
+ * side's recommender has learned to favour, relative to its own baseline.
+ * "leans more", never "prefers": this is a read of a few dozen votes, not a fact
+ * about a person. */
+function TasteDiff({ gender, data, lk, rk, sideName, sideColor }) {
+  const L = taste(data, sideMembers(data, gender, lk), gender);
+  const R = taste(data, sideMembers(data, gender, rk), gender);
+  const keys = Object.keys(L).filter((k) => R[k] != null);
+  if (keys.length < TASTE_MIN_BUCKETS) {
+    return (
+      <p style={{ fontSize:T.micro, color:C.muted, marginTop:S.sm, fontStyle:"italic" }}>
+        Not enough votes yet to compare what {sideName(lk)} and {sideName(rk)} go for.
+      </p>
+    );
+  }
+  const rows = keys.map((k) => ({ k, l: L[k], r: R[k] }));
+  const line = (label, color, list) => list.length === 0 ? null : (
+    <div style={{ display:"flex", gap:6, alignItems:"baseline", marginTop:4 }}>
+      <span style={{ ...LABEL, color, flexShrink:0 }}>{label}</span>
+      <span style={{ fontSize:T.meta, color:C.ink }}>{list.join(" · ")}</span>
+    </div>
+  );
+  const pick = (cmp) => rows.slice().sort(cmp).slice(0, 3).map((x) => tasteLabel(x.k));
+  const both = rows.filter((x) => x.l > 0.3 && x.r > 0.3)
+    .sort((a, b) => Math.min(b.l, b.r) - Math.min(a.l, a.r)).slice(0, 3).map((x) => tasteLabel(x.k));
+  return (
+    <div style={{ marginTop:S.sm, paddingTop:S.sm, borderTop:`1px solid ${C.line}` }}>
+      {line("Both lean", C.sage, both)}
+      {line(`${sideName(lk)} more`, sideColor(lk), pick((a, b) => (b.l - b.r) - (a.l - a.r)))}
+      {line(`${sideName(rk)} more`, sideColor(rk), pick((a, b) => (a.l - a.r) - (b.l - b.r)))}
+    </div>
+  );
+}
 function CompareScatter({ gender, title, data, lk, rk, sideName, sideColor }) {
   const vetoed = new Set([...data[gender].claire.vetoed, ...data[gender].andrew.vetoed]);
   const names = namesFor(gender, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
@@ -6484,6 +6600,7 @@ function CompareScatter({ gender, title, data, lk, rk, sideName, sideColor }) {
       <ScatterCompare names={names} xr={xr} yr={yr} xName={sideName(lk)} yName={sideName(rk)}
         xLabel={`${sideName(lk)} loves`} yLabel={`${sideName(rk)} loves`}
         xColor={sideColor(lk)} yColor={sideColor(rk)} midColor={C.sage} />
+      <TasteDiff gender={gender} data={data} lk={lk} rk={rk} sideName={sideName} sideColor={sideColor} />
     </div>
   );
 }
