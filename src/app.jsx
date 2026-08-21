@@ -6405,6 +6405,24 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   // what a subset of the family thinks.
   const [who, setWho] = useState(null);            // null = everyone
   const [showActivity, setShowActivity] = useState(false);
+  const [openVoter, setOpenVoter] = useState(null); // whose tuner picks are open
+  // Everything a person said in the taste tuner, both genders folded together.
+  // `s` is the running signal: positive means they kept picking it, negative
+  // means it kept losing. A name can appear under both genders if it's unisex,
+  // so sum rather than overwrite.
+  const tunerPicks = (k) => {
+    const tally = {};
+    ["boy", "girl"].forEach((g) => {
+      Object.entries((data[g][k] || {}).explore || {}).forEach(([id, e]) => {
+        tally[id] = (tally[id] || 0) + (e.s || 0);
+      });
+    });
+    const rows = Object.entries(tally).map(([id, v]) => ({ id, v }));
+    return {
+      liked: rows.filter((r) => r.v > 0).sort((a, b) => b.v - a.v),
+      passed: rows.filter((r) => r.v < 0).sort((a, b) => a.v - b.v),
+    };
+  };
   // Votes and tunes each person has actually done, so you can see who's pulling
   // the average. Only you and Andrew see this — it read as a scoreboard when it
   // sat on the chips where guests could see it.
@@ -6475,14 +6493,37 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
           </button>
           {showActivity && (
             <ul style={{ marginTop:S.sm, display:"flex", flexDirection:"column", gap:2 }}>
-              {[...voters].sort((a, b) => votesBy(b.key) - votesBy(a.key)).map((v) => (
-                <li key={v.key} style={{ display:"flex", alignItems:"baseline", gap:S.sm, fontSize:T.meta, color:C.muted }}>
-                  <span style={{ minWidth:96, fontWeight:700, color:pColor(v.key) }}>{v.name}</span>
-                  <span>{votesBy(v.key)} vote{votesBy(v.key) === 1 ? "" : "s"}</span>
-                  <span style={{ opacity:0.5 }}>·</span>
-                  <span>{tunesBy(v.key)} tune{tunesBy(v.key) === 1 ? "" : "s"}</span>
-                </li>
-              ))}
+              {[...voters].sort((a, b) => votesBy(b.key) - votesBy(a.key)).map((v) => {
+                const open = openVoter === v.key, picks = open ? tunerPicks(v.key) : null;
+                const namesOf = (rows) => rows.map((r) => CAND_NAME[r.id] || capId(r.id)).join(" · ");
+                return (
+                  <li key={v.key}>
+                    <button onClick={() => setOpenVoter(open ? null : v.key)} className="lift" aria-expanded={open}
+                      style={{ display:"flex", alignItems:"baseline", gap:S.sm, fontSize:T.meta, color:C.muted, background:"none", textAlign:"left" }}>
+                      <span style={{ minWidth:96, fontWeight:700, color:pColor(v.key) }}>{v.name}</span>
+                      <span>{votesBy(v.key)} vote{votesBy(v.key) === 1 ? "" : "s"}</span>
+                      <span style={{ opacity:0.5 }}>·</span>
+                      <span>{tunesBy(v.key)} tune{tunesBy(v.key) === 1 ? "" : "s"}</span>
+                      <span style={{ opacity:0.6 }}>{open ? "▾" : "▸"}</span>
+                    </button>
+                    {open && (
+                      <div style={{ margin:`4px 0 ${S.sm}px 96px`, fontSize:T.meta, lineHeight:1.6 }}>
+                        {picks.liked.length === 0 && picks.passed.length === 0 && (
+                          <div style={{ color:C.muted, fontStyle:"italic" }}>Hasn’t used the taste tuner yet.</div>
+                        )}
+                        {picks.liked.length > 0 && (
+                          <div><span style={{ ...LABEL, color:C.sage, marginRight:6 }}>Kept picking</span>
+                            <span style={{ color:C.ink }}>{namesOf(picks.liked)}</span></div>
+                        )}
+                        {picks.passed.length > 0 && (
+                          <div><span style={{ ...LABEL, color:C.clay, marginRight:6 }}>Passed over</span>
+                            <span style={{ color:C.muted }}>{namesOf(picks.passed)}</span></div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
