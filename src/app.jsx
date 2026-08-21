@@ -6485,7 +6485,9 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
           })}
         </div>
       )}
-      {mode === "everyone" && voters.length > 0 && isOwner(profile) && (
+      {/* Claire's view only — not Andrew's, not guests'. It reads other people's
+          activity, so it stays with the person who asked for it. */}
+      {mode === "everyone" && voters.length > 0 && profile === "claire" && (
         <div style={{ marginBottom:S.md }}>
           <button onClick={() => setShowActivity((v) => !v)} className="lift" aria-expanded={showActivity}
             style={{ ...LABEL, color:C.muted, background:"none" }}>
