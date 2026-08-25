@@ -210,5 +210,165 @@ eq("sideMembers resolves the group sides", run(`(()=>{
 eq("labels read as words, not feature keys", run(`JSON.stringify([tasteLabel("s:vin"), tasteLabel("o:ir"), tasteLabel("end:a"), tasteLabel("syl:1")])`),
    JSON.stringify(["vintage", "Irish", "ends in -a", "1 syllable"]));
 
+group("recommender responds to the person, not just to having been reacted to");
+
+// A heavy tuner is the case that was broken: with hundreds of tallies, the
+// DIRECT own-tally term outranked the whole taste model, so the list could only
+// ever hand back names you'd already seen in the tuner. Names never reacted to
+// must still be able to reach the list.
+run(`globalThis.HEAVY = (() => {
+  const d = assemble({});
+  const pg = d.girl.claire;
+  pg.votes = 150;
+  [...CAND.girl, ...CAND.unisex].filter(c => FEAT[c.id]).slice(0, 400).forEach((c, i) => {
+    pg.explore[c.id] = { s: (i % 3 === 0) ? 1.4 : -0.6, n: 2 };
+  });
+  return d;
+})()`);
+
+const untunedInTop = run(`(()=>{
+  const ex = HEAVY.girl.claire.explore;
+  return suggestNames(HEAVY, "claire", "girl").slice(0, 12).filter(x => !ex[x.c.id]).length;
+})()`);
+console.log(`   [untuned names in the top 12: ${untunedInTop}]`);
+ge("a name you never tuned can still be suggested", untunedInTop, 2);
+
+// The z-scoring is the fix. Raw weights land within a whisker of each other at
+// the top of the pool — less than one mash-up win is worth — so scoring on them
+// makes the ranking "did you react to this", not "does this fit you".
+const spreads = run(`(()=>{
+  const acc = tasteProfile(HEAVY, "claire", "girl");
+  const raw = Object.values(acc).map(a => a.v);
+  const z = Object.values(zScoreTaste(acc, RANK_KINDS, TASTE_MIN_N, RANK_MIN_BUCKETS));
+  const sp = (v) => Math.max(...v) - Math.min(...v);
+  return { raw: sp(raw), z: sp(z) };
+})()`);
+console.log(`   [feature spread — raw ${spreads.raw.toFixed(2)}, z-scored ${spreads.z.toFixed(2)}]`);
+ge("z-scoring separates features the raw weights left flat", +(spreads.z / spreads.raw).toFixed(2), 1.5);
+
+// Tunes are evidence. Someone who only ever uses the tuner used to keep the
+// app's generic cold-start taste at full strength no matter how much they taught it.
+const alphaOf = (votes, tunes) => run(`(()=>{
+  const d = assemble({}); const pg = d.girl.claire; pg.votes = ${votes};
+  [...CAND.girl].slice(0, ${tunes}).forEach((c) => { pg.explore[c.id] = { s: 1.0, n: 1 }; });
+  const ex = pg.explore;
+  const n = Object.values(ex).reduce((a, e) => a + (e.n || 0), 0);
+  return Math.max(0, Math.min(1, 1 - ((pg.votes||0) + TUNE_AS_VOTES * n) / 15));
+})()`);
+eq("no evidence at all leaves the prior at full strength", alphaOf(0, 0), 1);
+eq("tuning alone retires the cold-start prior", alphaOf(0, 40), 0);
+eq("a light tuner is still partly on the prior", alphaOf(0, 4) > 0 && alphaOf(0, 4) < 1, true);
+
+// Cold start must not move: with no evidence the prior IS the score, so the
+// rescale that put it in the same units as the z-scores can't reorder it.
+eq("cold start ranks exactly as it did before", run(`JSON.stringify({
+  girl: suggestNames(assemble({}), "claire", "girl").slice(0, 12).map(x => x.c.id),
+  boy:  suggestNames(assemble({}), "claire", "boy").slice(0, 12).map(x => x.c.id),
+})`), JSON.stringify({
+  girl: ["ellison","bellamy","larkin","remy","romilly","emeri","avelyn","carey","tegan","finley","cassidy","waverly"],
+  boy:  ["ellison","cassidy","bellamy","carey","larkin","tiernan","grayden","treyton","rustin","jagger","dempsey","conley"],
+}));
+
+group("a tune teaches the list(s) the name actually belongs to");
+
+// The tuner alternates boy/girl on its own, so routing every reaction into the
+// gender on screen sent half of someone's tuning to the list they weren't reading.
+eq("a unisex name tuned on the boys side also teaches the girls side", run(`(()=>{
+  const u = CAND.unisex.find(c => FEAT[c.id] && FEAT[c.id].lean === "u");
+  return JSON.stringify(tuneGenders(u.id, "boy").sort());
+})()`), JSON.stringify(["boy", "girl"]));
+
+eq("a girls-only name tuned on the girls side stays there", run(`(()=>{
+  const c = CAND.girl.find(x => FEAT[x.id] && FEAT[x.id].lean === "g");
+  return JSON.stringify(tuneGenders(c.id, "girl"));
+})()`), JSON.stringify(["girl"]));
+
+eq("a name we have no row for teaches both", run(`JSON.stringify(tuneGenders("qqzzxx", "girl").sort())`),
+   JSON.stringify(["boy", "girl"]));
+
+eq("the reaction always lands on the gender it was made under", run(`(()=>{
+  const c = CAND.boy.find(x => FEAT[x.id] && FEAT[x.id].lean === "b");
+  return tuneGenders(c.id, "girl").includes("girl");
+})()`), true);
+
+group("every suggestion says why it is there");
+
+const whys = run(`(()=>{
+  const out = suggestNames(HEAVY, "claire", "girl").slice(0, 12);
+  return { all: out.every(x => Array.isArray(x.why) && x.why.length > 0),
+           flat: out.flatMap(x => x.why),
+           sample: out[0].why };
+})()`);
+console.log(`   [top suggestion reads: "${whys.sample.join(" · ")}"]`);
+eq("no suggestion is unexplained", whys.all, true);
+// tasteProfile's weights are ranking scores, negative for nearly everything and
+// meaningless to a person — the reason line is words or it is nothing.
+eq("a reason never leaks a weight", whys.flat.some(w => /\d/.test(w)), false);
+eq("reasons read as words, not feature keys", whys.flat.some(w => w.includes(":")), false);
+
+eq("a name carried by its own tuner tally says so plainly", run(`(()=>{
+  const parts = [{ k: "s:vin", v: 0.1 }];
+  return whyFor(parts, 5).includes("you liked this one in the tuner");
+})()`), true);
+eq("a name carried by taste does not claim you tuned it", run(`(()=>{
+  const parts = [{ k: "s:vin", v: 2.0 }];
+  return whyFor(parts, 0).join();
+})()`), "vintage");
+eq("features you score badly on are never given as reasons", run(`(()=>{
+  return whyFor([{ k: "s:vin", v: -3 }, { k: "end:a", v: 1 }], 0).join();
+})()`), "ends in -a");
+
+group("the visible list is not one idea twelve times");
+
+// A straight best-match sort puts a single narrow cluster in every slot, which is
+// what makes the screen read as twelve spellings of the same name.
+// The case this exists for is THIN data: with only a roster to learn from, the
+// model spikes on one feature and every slot comes back the same shape. (That is
+// exactly what a voter looks like right after clearing their tuner history.)
+run(`globalThis.THIN = (() => {
+  const d = assemble({});
+  const pg = d.girl.claire;
+  pg.votes = 150;
+  namesFor("girl", [], []).forEach((n, i) => { pg.ratings[n.id] = START + (i < 8 ? 160 : -60); pg.matches[n.id] = 6; });
+  return d;
+})()`);
+
+const spread = run(`(()=>{
+  const plain = suggestNames(THIN, "claire", "girl").slice(0, 12);
+  const mixed = diversify(suggestNames(THIN, "claire", "girl"), "girl", 12).slice(0, 12);
+  const ends = (o) => new Set(o.map(x => x.f.end)).size;
+  // What the re-ranking actually optimises: how much the listed names resemble
+  // EACH OTHER. Distinct style-tag counts are a readable proxy but they wobble on
+  // synthetic data, so the assertion goes on the quantity being minimised.
+  const overlap = (o) => {
+    const v = o.map(x => featVec(x.c.id, "girl"));
+    let sum = 0, n = 0;
+    for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) { sum += featOverlap(v[i], v[j]); n++; }
+    return n ? sum / n : 0;
+  };
+  return { plainOv: overlap(plain), mixedOv: overlap(mixed),
+           plainEnds: ends(plain), mixedEnds: ends(mixed),
+           topKept: plain[0].c.id === mixed[0].c.id,
+           count: mixed.length };
+})()`);
+console.log(`   [how alike the 12 are: ${spread.plainOv.toFixed(2)} -> ${spread.mixedOv.toFixed(2)}; distinct endings ${spread.plainEnds} -> ${spread.mixedEnds}]`);
+eq("the listed names resemble each other less", spread.mixedOv < spread.plainOv, true);
+ge("more different endings reach the page", spread.mixedEnds, spread.plainEnds + 1);
+eq("the best match still leads the list", spread.topKept, true);
+eq("the list is still full", spread.count, 12);
+
+// Re-ranking must not invent, drop or duplicate candidates.
+eq("spreading reorders without losing anyone", run(`(()=>{
+  const all = suggestNames(THIN, "claire", "girl");
+  const out = diversify(all, "girl", 12);
+  const a = all.map(x => x.c.id).sort().join(), b = out.map(x => x.c.id).sort().join();
+  return a === b && new Set(out.map(x => x.c.id)).size === out.length;
+})()`), true);
+
+eq("a pool smaller than the window still comes back whole", run(`(()=>{
+  const all = suggestNames(THIN, "claire", "girl").slice(0, 4);
+  return diversify(all, "girl", 12).length === 4;
+})()`), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

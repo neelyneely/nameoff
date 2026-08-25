@@ -4435,6 +4435,12 @@ const TW = { o:0.3, s:1.4, end:1.0, syl:0.3, lean:0.6, tier:0.7, nick:0.5 };
 // Cold-start prior: before there are many votes, lean toward the seed taste
 // (surname-names, soft sounds, uncommon, unisex, good nicknames). Fades out by
 // ~15 votes as the learned signal takes over.
+// PRIOR is in the old raw units; the learned side is z-scored (standard
+// deviations, roughly +/-2). This puts the two on the same footing so the blend
+// between them means something. Cold-start order is unaffected by its value —
+// with no evidence the prior is the whole score and a uniform scale can't
+// reorder it — so it only shapes the handover.
+const PRIOR_SCALE = 2;
 const PRIOR = { "s:sur":1.2, "s:lyr":1.0, "s:nat":0.4, "s:vin":0.3, "tier:uncommon":1.0, "tier:rare":0.6, "lean:u":0.5, "nick:1":0.5 };
 
 /* ---- features for a name we don't have a row for -------------------------
@@ -4474,6 +4480,24 @@ const LIKE_W = 2.0;
 // ...and it counts as roughly two votes' worth of evidence when fading the
 // cold-start prior, so five typed names actually displace the generic seed taste.
 const LIKE_AS_VOTES = 2;
+// A mash-up reaction is real evidence too, and for some people it's the ONLY
+// evidence — the prior used to sit at full strength forever for anyone who
+// tuned instead of voting. Worth less than a head-to-head: you picked between
+// two names you were handed, you didn't seek either one out.
+const TUNE_AS_VOTES = 0.5;
+
+// Which list(s) a name belongs to. FEAT knows whether it leans girl, boy or
+// unisex; a name we can't place teaches both rather than being guessed into one.
+const likeGendersOf = (id) => {
+  const lean = FEAT[id] ? FEAT[id].lean : "u";
+  return lean === "b" ? ["boy"] : lean === "g" ? ["girl"] : ["boy", "girl"];
+};
+// Which explore maps one tuner reaction should touch, given the gender on screen.
+// A unisex name teaches BOTH models, the way a typed favourite does: the tuner
+// alternates boy/girl on its own, so filing every reaction under whichever gender
+// happened to be showing meant half your tuning taught the list you weren't
+// reading. `g` is always included so a name we can't place still lands somewhere.
+const tuneGenders = (id, g) => [...new Set([g, ...likeGendersOf(id)])];
 
 // What one Tune-your-taste reaction does to the two names' tallies. Kept in one
 // place because the undo runs it backwards — two copies would drift apart.
@@ -4557,17 +4581,23 @@ function tasteProfile(data, profile, gender) {
 // (3) are left out on purpose: normalising them pins every voter to the same
 // ±1, so they show up as fake agreement at the top of every comparison.
 const TASTE_KINDS = ["s", "o", "tier", "syl", "end"];
+// Ranking one person's own candidates is a different job from comparing two
+// people, so it keeps `lean` and `nick`: those two mislead only when two
+// voters' numbers are put side by side. `nick` has just 2 buckets, hence its
+// own floor.
+const RANK_KINDS = ["s", "o", "tier", "syl", "end", "lean", "nick"];
 const TASTE_MIN_N = 5;   // below this, one-off endings dominate on noise
 const TASTE_MIN_BUCKETS = 3;
+const RANK_MIN_BUCKETS = 2;
 const kindOf = (k) => k.slice(0, k.indexOf(":"));
 // Score each feature against the rest of ITS OWN kind for this person, so the
 // output means "further toward this than they usually are" rather than a raw
 // number that's negative for everybody.
-function normaliseTaste(acc) {
+function zScoreTaste(acc, kinds, minN, minBuckets) {
   const out = {};
-  TASTE_KINDS.forEach((kind) => {
-    const ks = Object.keys(acc).filter((k) => kindOf(k) === kind && acc[k].n >= TASTE_MIN_N);
-    if (ks.length < TASTE_MIN_BUCKETS) return;
+  kinds.forEach((kind) => {
+    const ks = Object.keys(acc).filter((k) => kindOf(k) === kind && acc[k].n >= minN);
+    if (ks.length < minBuckets) return;
     const vals = ks.map((k) => acc[k].v);
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
     const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length) || 1;
@@ -4575,6 +4605,7 @@ function normaliseTaste(acc) {
   });
   return out;
 }
+const normaliseTaste = (acc) => zScoreTaste(acc, TASTE_KINDS, TASTE_MIN_N, TASTE_MIN_BUCKETS);
 // Average several people's normalised profiles (for the "Us" / "Fam" sides).
 // Normalise first, then average, so someone with 600 tunes doesn't drown out
 // someone with 40.
@@ -4593,8 +4624,60 @@ const tasteLabel = (k) => {
   if (kind === "s") return STYLE_LABEL[v] || v;
   if (kind === "end") return `ends in -${v}`;
   if (kind === "syl") return `${v} syllable${v === "1" ? "" : "s"}`;
+  // Only the recommender's "why" line reaches these two; Compare drops both.
+  if (kind === "nick") return v === "1" ? "has nicknames" : "no nickname";
+  if (kind === "lean") return v === "u" ? "unisex" : v === "b" ? "leans boy" : "leans girl";
   return v;   // tier labels already read as words
 };
+
+// Kinds that read as a reason to a person. `lean` is left out on purpose:
+// "leans girl" is not a reason anybody needs while they're on the girls tab.
+const WHY_KINDS = ["s", "o", "end", "syl", "tier", "nick"];
+const WHY_MAX = 3;
+// Built from the same numbers that did the ranking, so the reason can never
+// drift from the reason. Words only — never a weight: they're ranking scores,
+// negative for almost everything, and meaningless to a person (see tasteProfile).
+function whyFor(parts, own) {
+  const feat = parts.filter((p) => p.v > 0 && WHY_KINDS.includes(kindOf(p.k)))
+    .sort((a, b) => b.v - a.v).slice(0, WHY_MAX).map((p) => tasteLabel(p.k));
+  // A name can lead purely because you reacted to it in the tuner. Say that
+  // plainly rather than dressing it up as a feature match it didn't earn.
+  const best = parts.length ? Math.max(...parts.map((p) => p.v)) : 0;
+  if (own > 0 && own >= best) return ["you liked this one in the tuner", ...feat.slice(0, WHY_MAX - 1)];
+  return feat;
+}
+
+// How much of a candidate's feature vector another one already covers. Used to
+// spread the visible list out, not to score — see diversify.
+const featVec = (id, gender) => {
+  const f = FEAT[id];
+  return new Set(["o:" + f.o, "end:" + f.end, "syl:" + f.syl, "tier:" + tierKeyFor(id, gender),
+                  ...(f.s || []).map((t) => "s:" + t)]);
+};
+const featOverlap = (a, b) => { let n = 0; a.forEach((x) => { if (b.has(x)) n++; }); return n / Math.max(a.size, b.size); };
+// A straight best-match sort hands back one idea twelve times: the top of the
+// pool is always a single narrow cluster, so the screen reads as twelve spellings
+// of the same name. Take the best one, then keep preferring candidates that differ
+// from what's already on the list. DIVERSITY is how hard that pull is — high enough
+// to break the cluster, low enough that the best match still leads.
+const DIVERSITY = 3;
+const DIVERSITY_POOL = 200;   // no point re-ranking the whole tail
+function diversify(scored, gender, k) {
+  const rest = scored.slice(0, DIVERSITY_POOL).map((x) => ({ x, v: featVec(x.c.id, gender) }));
+  const pick = [];
+  while (pick.length < k && rest.length) {
+    let bi = 0, best = -Infinity;
+    rest.forEach((r, i) => {
+      const worst = pick.length ? Math.max(...pick.map((p) => featOverlap(r.v, p.v))) : 0;
+      const s = r.x.sc - DIVERSITY * worst;
+      if (s > best) { best = s; bi = i; }
+    });
+    pick.push(rest.splice(bi, 1)[0]);
+  }
+  // Everything the window didn't take keeps its original order — the head's
+  // leftovers first, then the untouched tail. Re-ranking must never drop a name.
+  return [...pick.map((p) => p.x), ...rest.map((r) => r.x), ...scored.slice(DIVERSITY_POOL)];
+}
 
 function suggestNames(data, profile, gender) {
   const pg = data[gender][profile];
@@ -4609,14 +4692,22 @@ function suggestNames(data, profile, gender) {
   const present = new Set(roster.flatMap((x) => [x.id, slug(x.name)]));
   Object.keys(likes).forEach((id) => present.add(id));
   const acc = tasteProfile(data, profile, gender);
-  const learned = {};
-  Object.keys(acc).forEach((k) => { learned[k] = acc[k].v; });   // already shrunk
+  // Z-scored, not raw. The raw weights land within ~0.15 of each other across the
+  // top of the pool — less than a single mash-up win is worth below — so the
+  // ranking had quietly become "did you react to this at all" rather than "does
+  // this fit you", and names you'd never seen could not reach the list at all.
+  // Same treatment Compare already gets, minus its cross-person exclusions.
+  const learned = zScoreTaste(acc, RANK_KINDS, TASTE_MIN_N, RANK_MIN_BUCKETS);
   // Fade the cold-start prior on evidence of any kind, not just votes — otherwise
-  // someone who types six names they love still gets the app's generic taste.
-  const evidence = (pg.votes || 0) + LIKE_AS_VOTES * Object.keys(likes).length;
+  // someone who types six names they love still gets the app's generic taste, and
+  // someone who only ever uses the tuner never gets out of it at all.
+  const tunes = Object.values(explore).reduce((a, e) => a + (e.n || 0), 0);
+  const evidence = (pg.votes || 0) + LIKE_AS_VOTES * Object.keys(likes).length + TUNE_AS_VOTES * tunes;
   const alpha = Math.max(0, Math.min(1, 1 - evidence / 15)); // prior weight
-  const P = (k) => (learned[k] || 0) + alpha * (PRIOR[k] || 0);
-  const DIRECT = 0.6; // weight on a candidate's OWN mash-up signal
+  // A convex blend, because the two sides are no longer in the same units:
+  // `learned` is in standard deviations, PRIOR in the old raw scale.
+  const P = (k) => (1 - alpha) * (learned[k] || 0) + alpha * PRIOR_SCALE * (PRIOR[k] || 0);
+  const DIRECT = 0.3; // weight on a candidate's OWN mash-up signal
   // 3. Score unseen candidates (skip roster/removed/dismissed, hide "pass both").
   const pool = [...(CAND[gender] || []), ...CAND.unisex];
   return pool
@@ -4624,12 +4715,17 @@ function suggestNames(data, profile, gender) {
     .filter((c) => { const e = explore[c.id]; return !(e && e.s <= -3); })
     .map((c) => {
       const f = FEAT[c.id];
-      let sc = TW.o * P("o:" + f.o) + TW.end * P("end:" + f.end) + TW.syl * P("syl:" + f.syl)
-             + TW.lean * P("lean:" + f.lean) + TW.tier * P("tier:" + tierKeyFor(c.id, gender))
-             + TW.nick * P("nick:" + (f.nk ? 1 : 0));
-      f.s.forEach((t) => { sc += TW.s * P("s:" + t); });
-      sc += DIRECT * exWeightIn(explore, c.id);
-      return { c, sc, f };
+      // Keep each feature's contribution as we go, so the row can show WHY
+      // without redoing the arithmetic a second, drift-prone time.
+      const parts = [];
+      const add = (k, w) => { const v = w * P(k); parts.push({ k, v }); return v; };
+      let sc = add("o:" + f.o, TW.o) + add("end:" + f.end, TW.end) + add("syl:" + f.syl, TW.syl)
+             + add("lean:" + f.lean, TW.lean) + add("tier:" + tierKeyFor(c.id, gender), TW.tier)
+             + add("nick:" + (f.nk ? 1 : 0), TW.nick);
+      f.s.forEach((t) => { sc += add("s:" + t, TW.s); });
+      const own = DIRECT * exWeightIn(explore, c.id);
+      sc += own;
+      return { c, sc, f, why: whyFor(parts, own) };
     })
     .sort((a, b) => b.sc - a.sc);
 }
@@ -5428,21 +5524,28 @@ function App() {
   // entirely once its count returns to zero, so an undone tune leaves nothing
   // behind for the model to read.
   const undoExplore = (g, ids, kind) => applyExplore(g, ids, kind, -1);
+  const likeGenders = likeGendersOf;
   const applyExplore = (g, ids, kind, sign) => {
     const d = EXPLORE_DELTAS[kind];
     if (!d) return;
     const next = clone(dataRef.current);
-    const cur = next[g][profile];
-    cur.explore = { ...(cur.explore || {}) };
+    const touched = new Set();
     const adj = (id, ds) => {
-      const e = cur.explore[id] || { s:0, n:0 };
-      const n = e.n + sign;
-      if (n <= 0) delete cur.explore[id];
-      else cur.explore[id] = { s: e.s + sign * ds, n };
+      tuneGenders(id, g).forEach((tg) => {
+        const cur = next[tg][profile];
+        cur.explore = { ...(cur.explore || {}) };
+        const e = cur.explore[id] || { s:0, n:0 };
+        const n = e.n + sign;
+        if (n <= 0) delete cur.explore[id];
+        else cur.explore[id] = { s: e.s + sign * ds, n };
+        touched.add(tg);
+      });
     };
     adj(ids[0], d[0]); adj(ids[1], d[1]);
     dataRef.current = next; setData(next);
-    save({ [kCore(g, profile)]: coreOf(cur) });
+    const updates = {};
+    touched.forEach((tg) => { updates[kCore(tg, profile)] = coreOf(next[tg][profile]); });
+    save(updates);
   };
   // Passing on a suggestion: hide the name (does NOT train the
   // style model). reason is optional free text the voter can add later.
@@ -5455,10 +5558,6 @@ function App() {
   // unisex, so you don't have to be on the right tab first. Anything unisex — or
   // that we've never heard of — lands on BOTH lists, because a name we can't
   // place shouldn't be guessed into one.
-  const likeGenders = (id) => {
-    const lean = FEAT[id] ? FEAT[id].lean : "u";
-    return lean === "b" ? ["boy"] : lean === "g" ? ["girl"] : ["boy", "girl"];
-  };
   const addLike = (raw, tags) => {
     const name = (raw || "").trim().replace(/\s+/g, " ");
     if (!name) return null;
@@ -7135,7 +7234,11 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const passedIds = Object.keys(dismissed);
   const tuned = Object.keys(explore).length;
   const likeCount = Object.keys((data[g][profile] || {}).likes || {}).length;
-  const sugg = suggestNames(data, profile, g).slice(0, 12);
+  const sugg = diversify(suggestNames(data, profile, g), g, 12).slice(0, 12);
+  // Same test the "personalized" line below uses. Before you've taught it
+  // anything the reasons are just the app's generic seed taste repeated down the
+  // page — showing them would be the same claim that line is careful not to make.
+  const taught = votes > 0 || tuned > 0 || likeCount > 0;
 
   // (Re)pick a mash-up whenever the gender changes or a reaction advances the round.
   useEffect(() => {
@@ -7273,6 +7376,12 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                     {f.lean === "u" && <span style={{ ...LABEL, color:C.teal }}>unisex</span>}
                   </div>
                   <div style={{ fontSize:T.meta, color:C.muted, margin:"2px 0 6px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
+                  {/* Why this name is here, in the model's own terms. Without it
+                      the screen just asserts it's personalised and you have no
+                      way to tell when it's wrong. */}
+                  {taught && item.why.length > 0 && (
+                    <div style={{ ...LABEL, color:C.clay, margin:"0 0 6px" }}>{item.why.join(" · ")}</div>
+                  )}
                   <PopLine id={c.id} gender={g} compact noChart meaningShown />
                   <div style={{ marginTop:6 }}>
                     <NickEditor id={c.id} nicks={mergeNicks({ id: c.id, nicks: c.nicks || [] }, g).nicks} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={g} />
