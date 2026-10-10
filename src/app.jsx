@@ -6425,8 +6425,8 @@ function nameAttrib(n) {
   if (n.by) return { kind: "guest", name: n.byName || n.by };
   return { kind: "unknown" };
 }
-// Join a few names conversationally: "A", "A & B", "A, B & 2 more".
-const fmtNames = (arr) => (arr.length <= 1 ? (arr[0] || "") : arr.length === 2 ? `${arr[0]} & ${arr[1]}` : `${arr.slice(0, 2).join(", ")} & ${arr.length - 2} more`);
+// Join names conversationally: "A", "A & B", "A, B & C" — lists everyone, no truncation.
+const fmtNames = (arr) => (arr.length <= 1 ? (arr[0] || "") : arr.length === 2 ? `${arr[0]} & ${arr[1]}` : `${arr.slice(0, -1).join(", ")} & ${arr[arr.length - 1]}`);
 function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, onVeto, onClaim, notes, onSetNote, onAddNick, onRemoveNick, haters, reserveHaters, iHardPassed, onUnpass }) {
   const [showNote, setShowNote] = useState(false);
   const pctW = max === min ? 50 : ((r.score - min) / (max - min)) * 100;
@@ -6822,7 +6822,6 @@ function GenderRankColumn({ gender, title, mode, who, data, profile, readOnly, n
   const names = namesFor(gender, data.custom, data.removed);
   const cR = data[gender].claire.ratings, aR = data[gender].andrew.ratings;
   const cVeto = data[gender].claire.vetoed, aVeto = data[gender].andrew.vetoed;
-  const cRank = ranksOf(cR, names), aRank = ranksOf(aR, names);
   const splitGap = Math.ceil(names.length / 3);
   const isCombined = mode === "combined";
   const isEveryone = mode === "everyone";          // an average over whichever voters are toggled on
@@ -6847,6 +6846,11 @@ function GenderRankColumn({ gender, title, mode, who, data, profile, readOnly, n
   // "Not yet voted on" (combined view only): neither owner has seen it in a matchup yet.
   const notVotedYet = (id) => isCombined ? ((cMatch[id] || 0) === 0 && (aMatch[id] || 0) === 0)
     : isEveryone ? votedGuests.every((k) => ((data[gender][k].matches || {})[id] || 0) === 0) : false;
+  // C#/A# badges rank within the names actually on "Our list" (not vetoed, both have
+  // seen it) — ranking against the whole curated catalog made Winifred "#78" out of
+  // the 8 names anyone could actually see.
+  const badgeNames = names.filter((n) => !isVetoed(n.id) && !notVotedYet(n.id));
+  const cRank = ranksOf(cR, badgeNames), aRank = ranksOf(aR, badgeNames);
 
   const cVotes = data[gender].claire.votes, aVotes = data[gender].andrew.votes;
   const cVoted = cVotes > 0, aVoted = aVotes > 0;
