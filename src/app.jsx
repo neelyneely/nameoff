@@ -5736,7 +5736,7 @@ function App() {
     <div className="wrap">
       <Header me={data.profiles[profile]} myColor={pColor(profile)} onSwitch={switchMe}
         showAdd={showAdd} setShowAdd={setShowAdd} />
-      {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom} data={data} onRename={renameName} canEdit={isOwner(profile)}
+      {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom}
         popMode={popMode} setPopMode={changePopMode} onOpenLog={() => { setShowAdd(false); setShowLog(true); }} />}
       <Tabs view={view} setView={setView} />
 
@@ -5941,7 +5941,7 @@ function Header({ me, myColor, onSwitch, showAdd, setShowAdd }) {
     </div>
   );
 }
-function AddPanel({ custom, onAdd, onRemove, data, onRename, canEdit, popMode, setPopMode, onOpenLog }) {
+function AddPanel({ custom, onAdd, onRemove, popMode, setPopMode, onOpenLog }) {
   const [name, setName] = useState("");
   const [nicks, setNicks] = useState("");
   const [g, setG] = useState("girl");
@@ -5958,7 +5958,6 @@ function AddPanel({ custom, onAdd, onRemove, data, onRename, canEdit, popMode, s
         <button onClick={submit} className="lift" style={{ padding:"6px 16px", borderRadius:8, fontWeight:700, background:C.sage, color:"#fff" }}>Add</button>
       </div>
       <p style={{ fontSize:T.micro, marginTop:S.sm, color:C.muted }}>New names join voting right away and show “popularity &amp; meaning pending” until their SSA ranks and origin are filled in.</p>
-      {canEdit && <SpellPanel data={data} onRename={onRename} />}
       <div style={{ display:"flex", alignItems:"center", gap:S.sm, flexWrap:"wrap", marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
         <span style={{ ...LABEL, color:C.muted }}>Show popularity as</span>
         <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
