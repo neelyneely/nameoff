@@ -6885,7 +6885,8 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
   // veto is the most destructive control in the app, since it removes the name
   // for both of you at once.
   const [armed, setArmed] = useState(false);
-  useEffect(() => { setArmed(false); }, [n.id]);
+  const [popOpen, setPopOpen] = useState(false); // the bottom-left "i" (everyone but Claire)
+  useEffect(() => { setArmed(false); setPopOpen(false); }, [n.id]);
   useEffect(() => {
     if (!armed) return;
     const t = setTimeout(() => setArmed(false), 4000);
@@ -6910,20 +6911,39 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
         style={{ fontSize:T.display, fontWeight:800, lineHeight:1.0, letterSpacing:"-0.015em", color:C.ink }} />
       {sayOf(n.id) && <div style={{ marginTop:S.xs, fontSize:T.meta, color:C.ink, opacity:0.62, fontStyle:"italic" }}>“{sayOf(n.id)}”</div>}
       <div style={{ marginTop:S.md, display:"flex", justifyContent:"center" }}>
-        {onAddNick
+        {/* Claire's card keeps its editable chips. Everyone else's is ONE tap target:
+            chips and "add nickname" inside a card that votes made people unsure what
+            a tap would do. Nicknames are still editable in Rankings. */}
+        {onAddNick && showPop
           ? <NickEditor id={n.id} nicks={n.nicks} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={canRemoveNick} gender={gender} center big />
           : <span style={{ fontSize:T.name, fontWeight:600, color:C.ink }}>{n.nicks.length > 0 ? n.nicks.join(" · ") : ""}</span>}
       </div>
       <div style={{ marginTop:S.md, display:"flex", justifyContent:"center" }}>
-        {fp ? <PopLine id={n.id} gender={gender} compact noChart />
-            : showPop && <span style={{ fontSize:T.meta, fontStyle:"italic", color:C.ink, opacity:0.55 }}>Popularity &amp; meaning pending</span>}
+        {showPop
+          ? (fp ? <PopLine id={n.id} gender={gender} compact noChart />
+                : <span style={{ fontSize:T.meta, fontStyle:"italic", color:C.ink, opacity:0.55 }}>Popularity &amp; meaning pending</span>)
+          : MEANING[n.id] && <span style={{ fontSize:T.meta, color:C.ink, opacity:0.7 }}>{cleanMeaning(MEANING[n.id])}</span>}
       </div>
+      {/* Opens in place, under the meaning, so it never covers the name it's about. */}
+      {!showPop && fp && popOpen && (
+        <div onClick={(e) => e.stopPropagation()} style={{ marginTop:S.sm, width:"100%", padding:S.sm, borderRadius:R.card,
+          background:C.paper, border:`1px solid ${C.line}`, cursor:"default" }}>
+          <ShowPopCtx.Provider value={true}><PopLine id={n.id} gender={gender} /></ShowPopCtx.Provider>
+        </div>
+      )}
       {n.byName && !isOwner(n.by) && (
         <div style={{ marginTop:S.sm, fontSize:T.micro, fontWeight:600, color:C.ink, opacity:0.6 }}>suggested by {n.byName}</div>
       )}
       {/* Bottom-right, inside the card's bottom padding (S.xl): below every row, so
           it can't sit on a long name the way the old top-right button did on
           Winifred, and it costs the card no height. */}
+      {/* Bottom-left mirror of it: popularity for anyone curious, one tap away. */}
+      {!showPop && fp && !armed && (
+        <button onClick={(e) => { e.stopPropagation(); setPopOpen((o) => !o); }} aria-expanded={popOpen}
+          aria-label={`How popular is ${n.name}?`} title="How popular is this name?" className="lift"
+          style={{ position:"absolute", bottom:S.xs, left:S.sm, width:28, height:28, borderRadius:R.pill, fontSize:T.meta, fontWeight:700,
+            color:C.muted, background: popOpen ? C.paper : "rgba(255,255,255,0.55)" }}>i</button>
+      )}
       {armed
         ? <button onClick={(e) => { e.stopPropagation(); setArmed(false); onVeto(); }} disabled={!!picked}
             aria-label={`Confirm: ${vetoWord.toLowerCase()} ${n.name}`}
