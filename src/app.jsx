@@ -4498,11 +4498,39 @@ const CSERIES = {
   connie: { girl:{ 2020:2999,2021:3062,2022:3350,2023:3890,2024:3164,2025:3091 } },
 
 };
+// Name ideas suggest the common spelling of a name, not a rare variant of it. RESPELL
+// maps a candidate spelled an uncommon way to the common spelling (Klara → Clara,
+// Rider → Ryder), generated from the SSA data by scripts/ssa-popularity.mjs.
+// <respell> generated — don't hand-edit; rerun the script
+const RESPELL = {
+  abbie:"Abby", adella:"Adela", alannah:"Alana", alissa:"Alyssa", ally:"Allie", aly:"Allie", ami:"Amy", anabel:"Annabelle",
+  anabelle:"Annabelle", analise:"Annalise", annabel:"Annabelle", bennet:"Bennett", blayne:"Blaine", brice:"Bryce", bridgette:"Bridget", bryanna:"Brianna",
+  bryn:"Brynn", caitlin:"Kaitlyn", canon:"Cannon", carlie:"Carly", cedrick:"Cedric", cobe:"Kobe", collette:"Colette", corbyn:"Corbin",
+  daren:"Darren", dianna:"Diana", eleanore:"Eleanor", eliot:"Elliot", elissa:"Elisa", ellena:"Elena", elly:"Ellie", elody:"Elodie",
+  emeline:"Emmeline", emeri:"Emery", emilie:"Emily", emmet:"Emmett", emmit:"Emmitt", ericka:"Erika", everette:"Everett", filip:"Philip",
+  frederic:"Frederick", fynn:"Finn", halley:"Haley", haylie:"Hailee", hellen:"Helen", hollie:"Holly", jessi:"Jessie", jet:"Jett",
+  jimmie:"Jimmy", joana:"Joanna", kallen:"Callen", karly:"Carly", karoline:"Caroline", katy:"Katie", kayley:"Kailey", kendal:"Kendall",
+  kezia:"Keziah", kierra:"Kiera", klara:"Clara", konrad:"Conrad", korey:"Corey", kory:"Cory", kurtis:"Curtis", leana:"Leanna",
+  lenox:"Lennox", levy:"Levi", lili:"Lily", lillia:"Lilia", lochlann:"Lochlan", lucie:"Lucy", maclin:"Macklin", malorie:"Mallory",
+  marc:"Mark", marianna:"Mariana", marisa:"Marissa", marko:"Marco", markus:"Marcus", marshal:"Marshall", mattias:"Matias", melisa:"Melissa",
+  melodie:"Melody", milly:"Millie", mollie:"Molly", natalee:"Natalie", nickolas:"Nicolas", nicolai:"Nikolai", ofelia:"Ophelia", ozzie:"Ozzy",
+  remmy:"Remy", rider:"Ryder", riker:"Ryker", ronny:"Ronnie", rorie:"Rory", rosemarie:"Rosemary", rubie:"Ruby", sailor:"Saylor",
+  sidney:"Sydney", silvia:"Sylvia", susannah:"Susanna", theodor:"Theodore", trystan:"Tristan", tye:"Ty", viktor:"Victor", vivianne:"Vivian",
+  vivien:"Vivienne", winnifred:"Winifred", wynne:"Wynn", wynona:"Winona", zac:"Zack", zaine:"Zayne",
+};
+// </respell>
 // Derive the candidate roster + fold candidate features/meanings/popularity into
 // the shared maps so an added candidate behaves like any other name.
 const CAND = { boy:[], girl:[], unisex:[] };
+// Every id the pool already has under its own spelling. A respelled candidate whose
+// common spelling is in here (Klara, when Clara is a candidate) just sits out; one
+// whose isn't (Rider) is offered under the common spelling. Either way its id, its
+// FEAT row and anyone's tune history on it stay put.
+const CAND_TAKEN = new Set([...CANDS.map((c) => c.id), ...NAMES.boy.map((n) => n.id), ...NAMES.girl.map((n) => n.id), ...UNISEX.map((n) => n.id)]);
 CANDS.forEach((c) => {
-  CAND[c.gender === "u" ? "unisex" : c.gender].push({ id:c.id, name:c.name, nicks:c.nicks });
+  const common = RESPELL[c.id];
+  if (!common || !CAND_TAKEN.has(common.toLowerCase()))   // (slug isn't defined yet up here; these are plain letters)
+    CAND[c.gender === "u" ? "unisex" : c.gender].push({ id:c.id, name:common || c.name, nicks:c.nicks });
   FEAT[c.id] = { o:c.o, s:c.s, end:c.end, syl:c.syl, lean:(c.gender === "u" ? "u" : c.gender === "boy" ? "b" : "g") };
   // Fold meaning/popularity in WITHOUT overwriting any curated entry that already
   // exists (e.g. a name that's also in the roster keeps its real history).
@@ -4520,6 +4548,8 @@ CANDS.forEach((c) => {
 // and percent somebody entered by hand stays exactly as it is.
 // <ssa-pop> generated — don't hand-edit; rerun the script
 const SSA_POP = {
+  abby: { girl:[509,576,587,624,624,731,0.0216] },
+  adela: { girl:[1165,1187,1114,1129,1098,1151,0.0115] },
   alana: { girl:[206,224,204,185,143,140,0.119] },
   alanah: { girl:[2051,1612,1954,2107,2218,2648,0.00371] },
   alanna: { girl:[561,560,566,457,290,280,0.0627] },
@@ -4533,11 +4563,16 @@ const SSA_POP = {
   alister: { boy:[1556,1764,1330,1701,1650,1689,0.00528] },
   alistor: { boy:[null,null,null,null,null,12101,0.000272] },
   allana: { girl:[3614,3940,4381,2936,3700,3169,0.00285] },
+  allie: { girl:[429,409,469,504,554,569,0.0302] },
   allistair: { boy:[10662,10863,9024,9805,null,10757,0.000326] },
   allister: { boy:[2190,2000,2000,2617,2595,2995,0.00223] },
   allistor: { boy:[null,12234,null,null,null,null,null] },
   alona: { girl:[2715,3393,3278,3838,3226,3521,0.00245] },
+  alyssa: { girl:[199,233,288,334,399,453,0.0388] },
   alyster: { boy:[null,10868,8343,8300,null,12111,0.000272] },
+  amy: { girl:[215,189,206,199,227,257,0.0685] },
+  annabelle: { girl:[220,275,322,340,348,343,0.0508] },
+  annalise: { girl:[441,385,418,428,461,409,0.0436] },
   annora: { girl:[3925,3809,4120,3280,3704,3721,0.00228] },
   anora: { girl:[2244,2086,2898,2258,2367,1485,0.00822] },
   arden: { girl:[1055,1091,1056,1046,1041,975,0.0149], boy:[1153,1200,1255,1020,942,1005,0.0122] },
@@ -4563,16 +4598,19 @@ const SSA_POP = {
   becket: { boy:[4719,2979,3060,4015,3277,3770,0.00158] },
   beckett: { boy:[210,198,195,196,166,141,0.137] },
   bekett: { boy:[10768,null,null,null,null,null,null] },
+  bennett: { boy:[101,90,83,74,60,40,0.341] },
+  blaine: { boy:[882,984,1032,1047,1119,992,0.0125] },
   bowan: { boy:[8853,6071,11064,9886,5945,6860,0.000653] },
   bowen: { boy:[395,368,390,349,321,266,0.0703] },
   bowyn: { boy:[6685,5803,6533,5967,5095,4416,0.00125] },
+  brianna: { girl:[145,184,171,152,181,222,0.0783] },
   bridget: { girl:[750,722,793,750,706,724,0.022] },
   bridgett: { girl:[6683,8109,7705,7315,9045,8452,0.000685] },
   bridgette: { girl:[2306,2613,2213,2339,2236,2125,0.00502] },
   brigette: { girl:[10411,9079,11397,8132,12395,7556,0.000799] },
-  brigid: { girl:[2420,3399,2965,2623,2672,2784,0.00348] },
   brigit: { girl:[13759,15673,null,null,null,null,null] },
   brin: { girl:[15533,11304,null,null,null,null,null] },
+  bryce: { boy:[234,250,265,258,296,357,0.05] },
   bryn: { girl:[1763,1528,1858,2079,2104,2021,0.00536] },
   brynn: { girl:[333,361,388,414,383,407,0.0438] },
   brynne: { girl:[4024,4987,4606,4208,4790,3472,0.00251] },
@@ -4585,11 +4623,15 @@ const SSA_POP = {
   camdon: { boy:[3834,6385,3789,8366,6904,9876,0.000381] },
   camdyn: { girl:[1994,1914,2195,2649,2562,2617,0.00377], boy:[1180,1148,1397,1358,1701,1889,0.00451] },
   campbell: { girl:[1190,1162,1221,1127,955,617,0.027], boy:[1166,1046,1034,1031,923,764,0.0183] },
+  cannon: { boy:[542,506,600,641,763,722,0.0203] },
   carey: { girl:[10434,10453,12502,null,15736,null,null], boy:[6699,9899,7345,6965,5275,6519,0.000707] },
+  carly: { girl:[621,664,778,780,875,1009,0.0141] },
+  caroline: { girl:[71,80,77,83,92,96,0.151] },
   cary: { girl:[null,null,null,null,15738,null,null], boy:[3940,3931,3223,4479,3533,3676,0.00163] },
   case: { boy:[576,629,650,715,723,733,0.0195] },
   casey: { girl:[1064,1016,949,1047,1052,1065,0.013], boy:[517,447,336,316,310,320,0.0583] },
   casie: { girl:[11294,8582,15777,11385,12416,13533,0.000342] },
+  cedric: { boy:[969,1038,961,1045,940,1051,0.0114] },
   chance: { boy:[279,322,340,377,418,442,0.0387] },
   channce: { boy:[12383,null,null,11068,null,null,null] },
   channing: { girl:[1886,2368,2144,2625,2861,3136,0.00291] },
@@ -4599,6 +4641,7 @@ const SSA_POP = {
   cid: { boy:[12403,null,null,null,null,9897,0.000381] },
   ciera: { girl:[6993,7341,9187,8592,9695,11153,0.000456] },
   cierra: { girl:[2900,3818,3549,3656,2898,2727,0.00359] },
+  clara: { girl:[103,102,110,98,78,63,0.205] },
   clea: { girl:[8513,6459,5055,5593,5332,5961,0.00114] },
   cleo: { girl:[882,794,664,608,607,577,0.0294] },
   clio: { girl:[5359,4038,4610,5029,5995,5127,0.00143] },
@@ -4606,15 +4649,22 @@ const SSA_POP = {
   clodagh: { girl:[10451,12491,9850,9114,10461,10268,0.000513] },
   cohl: { boy:[12410,null,null,null,null,null,null] },
   cole: { boy:[133,132,144,155,162,182,0.109] },
+  colette: { girl:[532,456,452,442,401,316,0.0549] },
   conal: { boy:[null,12500,null,null,null,null,null] },
   conall: { boy:[4167,3665,3906,3812,3535,5074,0.00103] },
+  conrad: { boy:[551,537,575,536,468,417,0.0419] },
+  corbin: { boy:[347,365,429,455,474,512,0.0319] },
   cordelia: { girl:[1006,1010,1052,1117,1066,981,0.0147] },
   cordellia: { girl:[null,15775,null,null,null,null,null] },
+  corey: { boy:[530,552,635,642,678,778,0.0178] },
+  cory: { boy:[910,991,1144,1179,1096,1245,0.0087] },
   coy: { girl:[null,null,null,null,null,null,null], boy:[1379,1622,1498,1653,1504,1451,0.00669] },
   coye: { boy:[null,null,null,null,12709,null,null] },
+  curtis: { boy:[703,780,821,905,930,985,0.0126] },
   cy: { girl:[null,null,null,12430,null,null,null], boy:[2144,2785,2416,2015,2351,2540,0.00283] },
   cyd: { girl:[null,null,null,null,null,null,null], boy:[null,null,null,null,null,null,null] },
   cye: { boy:[null,7191,11150,8391,null,null,null] },
+  darren: { boy:[718,803,853,978,954,1135,0.0102] },
   delainey: { girl:[3793,3044,2768,1570,1350,1390,0.00896] },
   delaney: { girl:[313,269,244,235,216,242,0.0732] },
   delani: { girl:[2423,2105,1671,1395,1371,1469,0.00833] },
@@ -4625,22 +4675,34 @@ const SSA_POP = {
   devin: { girl:[2532,2216,2071,2112,2034,2158,0.00491] },
   devon: { girl:[3104,3126,3235,3340,3711,3480,0.00251] },
   devyn: { girl:[1145,1118,1123,1108,1150,1295,0.00981] },
+  diana: { girl:[245,225,229,228,242,244,0.0729] },
+  eleanor: { girl:[22,15,16,14,14,12,0.436] },
+  elena: { girl:[55,53,49,47,46,42,0.276] },
   eliot: { girl:[5057,6475,14075,12513,12541,6182,0.00108] },
   elis: { boy:[7159,5184,5945,6014,5989,7326,0.000598] },
+  elisa: { girl:[511,421,408,419,433,458,0.0385] },
   elise: { girl:[212,242,260,273,251,223,0.078] },
-  elliot: { girl:[574,772,788,894,945,1035,0.0137] },
+  ellie: { girl:[29,30,33,27,21,24,0.352] },
+  elliot: { girl:[574,772,788,894,945,1035,0.0137], boy:[164,159,150,178,150,151,0.131] },
   elliott: { girl:[486,557,625,659,612,599,0.0279] },
   elliotte: { girl:[2381,3082,3086,2767,1947,2360,0.00439] },
   ellis: { girl:[618,597,699,752,697,682,0.0237], boy:[326,320,307,275,273,243,0.0771] },
   ellyse: { girl:[6717,8631,8686,11500,12555,8511,0.000685] },
+  elodie: { girl:[703,740,681,737,372,310,0.0559] },
   elyce: { girl:[13944,13987,null,15888,15985,12281,0.000399] },
   elyse: { girl:[718,869,816,812,750,918,0.0163] },
   emersen: { girl:[3639,4757,3845,5288,4412,4006,0.00205], boy:[7686,10035,8503,8443,8528,7832,0.000544] },
   emerson: { girl:[155,168,170,161,151,122,0.128], boy:[268,277,274,268,270,254,0.0746] },
   emersyn: { girl:[164,147,135,147,154,138,0.12] },
   emersynn: { girl:[3512,4045,4142,4489,4807,4208,0.00194] },
+  emery: { girl:[89,90,82,70,70,74,0.183] },
+  emily: { girl:[18,21,17,19,25,34,0.311] },
+  emmeline: { girl:[864,886,981,949,939,922,0.0162] },
   emmerson: { girl:[1981,2193,2430,2428,2674,2623,0.00377], boy:[3599,4147,4020,6301,3722,4437,0.00125] },
   emmersyn: { girl:[2327,2565,2161,2768,3025,2760,0.00354] },
+  emmett: { boy:[107,103,116,117,119,121,0.16] },
+  emmitt: { boy:[510,545,598,660,680,770,0.0181] },
+  erika: { girl:[1017,1104,1261,1053,1143,1109,0.0122] },
   eunice: { girl:[1861,2074,1830,2202,1971,2362,0.00439], boy:[null,null,null,null,null,null,null] },
   everet: { boy:[9877,6123,7942,7031,7410,10008,0.000381] },
   everett: { boy:[90,83,81,89,85,77,0.233] },
@@ -4681,20 +4743,30 @@ const SSA_POP = {
   grant: { boy:[213,214,220,228,241,228,0.0846] },
   greer: { girl:[2110,1997,2147,2386,1984,1851,0.00616] },
   grier: { girl:[5724,6495,7768,6505,6488,5988,0.00114] },
+  hailee: { girl:[1112,1184,1115,1258,1285,1355,0.0093] },
+  haley: { girl:[516,562,604,684,775,861,0.0179] },
   harlo: { girl:[4391,4051,4959,3398,5064,3538,0.00245], boy:[9930,4990,4764,3656,3353,3793,0.00158] },
   harlow: { girl:[324,237,263,238,293,309,0.056], boy:[2246,1818,1201,1151,1246,1214,0.00908] },
   harlowe: { girl:[2730,2395,2261,2249,1677,1784,0.00645], boy:[null,null,10174,12901,6595,5954,0.000816] },
+  helen: { girl:[426,444,422,395,425,462,0.0381] },
+  holly: { girl:[479,465,457,453,420,416,0.0428] },
   imogen: { girl:[1238,1336,1288,1213,1121,1117,0.012] },
   imogene: { girl:[2642,2734,2497,2915,2474,2521,0.00399] },
   isolde: { girl:[8617,6809,7419,5459,7748,5997,0.00114] },
   jack: { boy:[21,11,15,14,15,15,0.476] },
   "jamarius-d-quan": { boy:[null,null,null,null,null,null,null] },
   "jean-ralphio": { boy:[null,null,null,null,null,null,null] },
+  jessie: { girl:[719,795,794,796,809,824,0.0188] },
+  jett: { boy:[278,246,211,207,161,169,0.118] },
+  jimmy: { boy:[727,756,778,821,850,847,0.0158] },
+  joanna: { girl:[256,291,321,339,329,306,0.0569] },
   juno: { girl:[1812,1658,1580,1334,1387,1252,0.0102] },
   kace: { boy:[794,875,1055,1215,1000,1016,0.012] },
   kacey: { girl:[1233,1173,1194,1230,1095,1118,0.012], boy:[1186,997,1081,1040,1043,1155,0.0099] },
   kaci: { girl:[1647,1835,1701,1869,2077,2132,0.00502] },
   kacie: { girl:[1825,2051,2309,2149,1775,1868,0.00605] },
+  kailey: { girl:[848,961,1017,1091,1288,1420,0.00873] },
+  kaitlyn: { girl:[488,583,630,619,650,802,0.0194] },
   kallan: { boy:[2821,2636,2011,2755,2387,1912,0.00446] },
   kallen: { boy:[1268,1277,1334,1363,1478,1302,0.00816] },
   kalvin: { boy:[1303,1446,1401,1811,1786,1567,0.00593] },
@@ -4706,6 +4778,7 @@ const SSA_POP = {
   kase: { boy:[837,826,865,1038,973,1115,0.0104] },
   kasey: { girl:[1447,1372,1511,1703,1593,1876,0.00599], boy:[1641,1436,1356,1219,1160,1162,0.00979] },
   kasie: { girl:[6487,10683,12884,14280,12786,10493,0.000513] },
+  katie: { girl:[480,525,556,526,577,646,0.0255] },
   kaycee: { girl:[1379,1389,1299,1352,1381,1303,0.00976], boy:[5839,3393,2737,2636,2544,2665,0.00267] },
   keagan: { girl:[3874,3712,4851,4697,4078,4703,0.00165], boy:[1150,1475,1431,1657,1626,1614,0.00571] },
   keegan: { boy:[496,492,566,627,593,621,0.0244] },
@@ -4713,9 +4786,13 @@ const SSA_POP = {
   keelan: { girl:[12816,11647,14461,null,null,null,null] },
   keelyn: { girl:[6490,9933,null,9964,10688,11417,0.000456] },
   keigan: { boy:[4491,5907,5125,9366,9438,8599,0.000489] },
+  kendall: { girl:[314,306,301,317,312,328,0.0532] },
+  keziah: { girl:[1167,1106,1117,1054,868,767,0.0202] },
+  kiera: { girl:[996,969,1048,1101,984,1097,0.0125] },
   king: { boy:[171,185,222,265,342,405,0.0427] },
   klea: { girl:[7771,7846,6359,9324,9265,9792,0.000571] },
   kleo: { girl:[5105,3586,3798,3250,2872,2874,0.00337] },
+  kobe: { boy:[239,298,381,421,410,519,0.0314] },
   kohl: { boy:[5856,4316,6021,5811,8069,5507,0.000925] },
   kole: { boy:[855,859,1023,971,1200,1247,0.0087] },
   kordelia: { girl:[14347,10728,null,12846,10713,8123,0.000742] },
@@ -4735,6 +4812,7 @@ const SSA_POP = {
   laurelle: { girl:[11676,null,14563,10803,14482,16262,0.000285] },
   layney: { girl:[9270,12934,13006,7113,7806,9819,0.000571] },
   laynie: { girl:[1963,1541,1619,1717,1573,1296,0.00981] },
+  leanna: { girl:[885,912,947,986,905,890,0.0171] },
   lebron: { girl:[null,null,null,null,null,null,null], boy:[5863,5038,10419,8036,7546,null,null] },
   lennon: { girl:[299,238,228,243,235,214,0.0811], boy:[691,673,663,756,786,808,0.0168] },
   lennox: { boy:[292,254,248,266,264,289,0.0631] },
@@ -4743,9 +4821,11 @@ const SSA_POP = {
   lenoxx: { boy:[5864,6940,7549,10345,8088,6660,0.000707] },
   leona: { girl:[484,515,531,521,487,429,0.0412] },
   leonna: { girl:[4230,4292,4168,6080,4620,4826,0.0016] },
-  lila: { boy:[null,null,null,null,null,null,null] },
+  levi: { boy:[18,12,12,12,12,12,0.524] },
   "lila-2": { girl:[228,223,221,213,207,187,0.0953] },
   lilah: { girl:[240,244,220,198,179,179,0.099] },
+  lilia: { girl:[1154,1021,1007,960,915,859,0.018] },
+  lily: { girl:[35,31,30,20,24,18,0.381] },
   liv: { girl:[666,686,729,703,874,896,0.0169] },
   livv: { girl:[16536,null,16719,null,null,null,null] },
   lochlan: { boy:[729,792,806,824,777,644,0.0236] },
@@ -4753,6 +4833,7 @@ const SSA_POP = {
   locklan: { boy:[8472,6542,5549,6106,4514,6664,0.000707] },
   lowen: { girl:[4837,4205,3103,2030,2050,1639,0.00725] },
   lowyn: { girl:[null,null,13042,10043,6824,7355,0.000856] },
+  lucy: { girl:[50,48,48,40,34,25,0.352] },
   lyall: { boy:[null,null,9526,null,9523,10287,0.000381] },
   lyla: { girl:[118,110,105,99,83,80,0.176], boy:[null,13332,null,null,null,null,null] },
   lylah: { girl:[594,581,583,605,545,585,0.0287] },
@@ -4761,11 +4842,15 @@ const SSA_POP = {
   mable: { girl:[3371,3280,3452,2806,2478,2450,0.00416] },
   mac: { boy:[934,674,605,656,697,696,0.0212] },
   mack: { boy:[505,474,504,545,499,463,0.0363] },
+  macklin: { boy:[1136,1150,1279,1411,1161,998,0.0124] },
   maebel: { girl:[7101,6085,5114,6566,6559,8157,0.000742] },
   maev: { girl:[null,16766,9412,null,null,16356,0.000285] },
   maeve: { girl:[174,124,103,73,75,76,0.18] },
   maeven: { girl:[4707,3915,3746,2926,3619,2878,0.00337] },
   maira: { girl:[3126,2548,2743,2723,2764,2765,0.00354] },
+  mallory: { girl:[566,549,533,432,412,372,0.0471] },
+  marco: { boy:[393,399,371,382,387,370,0.0469] },
+  marcus: { boy:[226,228,235,250,256,258,0.0729] },
   maren: { girl:[438,441,502,545,569,472,0.0373] },
   margaret: { girl:[126,125,127,132,119,112,0.139] },
   margarett: { girl:[null,null,10915,12972,16811,12704,0.000399] },
@@ -4773,24 +4858,33 @@ const SSA_POP = {
   margo: { girl:[765,640,617,543,546,559,0.0308] },
   margot: { girl:[234,194,193,148,127,102,0.147] },
   margret: { girl:[8252,10042,10916,11818,7127,5843,0.0012] },
+  mariana: { girl:[273,251,243,245,243,261,0.068] },
   marin: { girl:[1787,1635,1865,1884,1907,2043,0.00531] },
+  marissa: { girl:[1083,1241,1313,1547,1495,1679,0.00702] },
+  mark: { boy:[235,252,247,249,244,245,0.077] },
   marlo: { girl:[2166,1938,1718,1980,1713,1839,0.00622] },
   marloe: { girl:[8256,10046,11869,7901,7462,9872,0.000571] },
   marlow: { girl:[2028,1447,1673,1370,1323,1167,0.0114] },
   marlowe: { girl:[927,899,779,836,625,523,0.0328] },
   marren: { girl:[13004,9344,6380,12981,7130,6734,0.00097] },
+  marshall: { boy:[367,379,384,388,391,340,0.0531] },
   maryn: { girl:[1720,2148,2519,2252,2299,2187,0.00485] },
   mathilda: { girl:[4329,3422,4085,5081,4629,4423,0.00183] },
+  matias: { boy:[216,225,196,164,159,170,0.116] },
   maven: { girl:[2043,1923,1778,1436,1539,1584,0.00759], boy:[5163,3465,3835,2720,3255,3564,0.00174] },
   maybel: { girl:[8765,6323,7908,4527,5392,4626,0.00171] },
   mayra: { girl:[1576,1627,1582,1734,1583,2168,0.00491] },
   mayve: { girl:[null,8809,8862,7148,4852,2984,0.00319] },
   mayven: { girl:[5270,5043,5123,5336,5394,4042,0.00205] },
   mcallister: { boy:[11515,13409,8750,10413,null,null,null] },
+  melissa: { girl:[349,372,379,411,379,420,0.0426] },
+  melody: { girl:[106,113,109,103,91,79,0.177] },
   merit: { girl:[9348,7893,7915,5084,7475,3154,0.00291] },
   meritt: { girl:[null,16874,14736,11844,14681,9272,0.000628] },
   merrit: { girl:[null,13057,16935,14592,14684,7759,0.000799] },
   merritt: { girl:[1531,1648,1544,1563,1410,703,0.0229] },
+  millie: { girl:[190,173,128,105,87,73,0.191] },
+  molly: { girl:[173,186,199,209,208,196,0.0913] },
   murphee: { girl:[10846,16917,8885,8821,9372,7386,0.000856] },
   murphey: { girl:[null,16918,14767,null,10029,null,null] },
   murphi: { girl:[null,null,null,16847,16932,null,null] },
@@ -4800,6 +4894,7 @@ const SSA_POP = {
   naomi: { girl:[52,54,46,44,44,47,0.265] },
   naomie: { girl:[3084,3600,3021,4103,3105,3692,0.00234] },
   naomy: { girl:[3662,4389,4176,4168,4187,4522,0.00177] },
+  natalie: { girl:[51,56,55,63,73,89,0.156] },
   navee: { girl:[11819,5196,5922,4960,7163,7048,0.000913] },
   navie: { girl:[3375,2246,2988,2751,2429,2638,0.00377] },
   navy: { girl:[660,454,479,363,338,327,0.0533] },
@@ -4813,8 +4908,10 @@ const SSA_POP = {
   nevin: { boy:[2281,2764,3040,2987,3318,4013,0.00147] },
   nevyn: { boy:[null,7988,10543,null,null,null,null] },
   niamh: { girl:[4241,4150,4019,4342,3160,3561,0.00245] },
+  nicolas: { boy:[202,189,191,192,184,177,0.112] },
   nieve: { girl:[13100,17003,null,11906,11865,10689,0.000513] },
   nigella: { girl:[null,null,null,null,null,null,null] },
+  nikolai: { boy:[545,481,584,604,594,605,0.0255] },
   niles: { girl:[null,null,null,null,null,null,null], boy:[2040,2212,2398,2531,3146,2506,0.00294] },
   "niles-neely": { girl:[null,null,null,null,null,null,null], boy:[null,null,null,null,null,null,null] },
   "nolan-nigel-neely": { girl:[null,null,null,null,null,null,null], boy:[null,null,null,null,null,null,null] },
@@ -4823,7 +4920,10 @@ const SSA_POP = {
   nova: { girl:[38,32,32,35,39,46,0.266] },
   novah: { girl:[569,745,696,706,889,1006,0.0142] },
   nyles: { boy:[4238,3159,3669,4303,3374,4347,0.00131] },
+  ophelia: { girl:[391,321,271,265,259,264,0.0675] },
+  ozzy: { boy:[1049,713,619,554,599,549,0.0298] },
   parker: { girl:[128,115,115,122,104,106,0.145], boy:[95,93,94,91,97,102,0.189] },
+  philip: { boy:[453,452,493,499,521,528,0.0309] },
   phinley: { boy:[13562,null,null,11906,null,null,null] },
   piper: { girl:[91,96,114,135,159,155,0.111] },
   pyper: { girl:[1740,2042,2384,3216,2603,2884,0.00337] },
@@ -4837,20 +4937,26 @@ const SSA_POP = {
   reese: { girl:[146,148,168,174,190,192,0.0931], boy:[733,703,647,632,621,603,0.0258] },
   reid: { boy:[316,299,325,315,300,293,0.0625] },
   reilly: { girl:[2236,2666,2678,3261,2714,2855,0.00342], boy:[2538,2319,2509,2429,2822,2708,0.00261] },
+  remy: { boy:[356,360,356,390,400,408,0.0425] },
   ren: { girl:[3003,2305,2187,2173,2262,2190,0.00485] },
   renn: { girl:[5454,5208,4093,3700,5263,4850,0.0016] },
   rhys: { boy:[419,413,426,353,353,412,0.0423] },
   rilee: { girl:[2149,2208,3406,2928,4193,6070,0.00114] },
   riley: { girl:[33,37,39,43,42,48,0.253], boy:[257,245,225,223,229,208,0.0906] },
+  ronnie: { boy:[1067,990,1048,1102,995,1067,0.0111] },
   rorey: { girl:[null,11993,null,null,null,14582,0.000342], boy:[11738,13703,12039,11968,13849,7574,0.000598] },
   rori: { girl:[1367,1418,1258,1554,1528,1298,0.00981], boy:[10390,10573,10633,11969,null,null,null] },
   rorie: { girl:[3383,2919,3207,2578,2919,2452,0.00416], boy:[null,null,9667,null,null,null,null] },
   rory: { girl:[458,399,336,305,287,230,0.076], boy:[330,295,280,242,227,199,0.0962] },
+  rosemary: { girl:[442,363,365,310,301,251,0.0697] },
   rowan: { girl:[255,241,277,234,266,249,0.0707] },
   rowann: { girl:[null,null,14969,null,null,null,null] },
   rowen: { girl:[1499,1274,1411,1338,1273,1411,0.00884] },
   rowyn: { girl:[1193,1079,976,1028,781,699,0.0232] },
   rowynn: { girl:[5142,4156,4186,3702,3744,2990,0.00319] },
+  ruby: { girl:[74,62,62,65,62,64,0.203] },
+  ryder: { boy:[108,111,115,128,134,133,0.147] },
+  ryker: { boy:[148,153,175,184,183,183,0.109] },
   rylee: { girl:[102,97,107,118,125,137,0.121], boy:[1383,1392,1557,1516,1696,1885,0.00457] },
   rylei: { girl:[2592,2438,3208,3376,3218,4532,0.00177] },
   ryleigh: { girl:[159,164,191,263,302,344,0.0508], boy:[5921,7482,8856,5419,6414,9545,0.000435] },
@@ -4865,6 +4971,7 @@ const SSA_POP = {
   savannah: { girl:[67,67,76,92,108,135,0.122] },
   sawyer: { girl:[239,216,242,280,297,291,0.0602], boy:[116,114,131,127,131,122,0.16] },
   sayge: { girl:[7901,5218,3818,4979,4369,4534,0.00177] },
+  saylor: { girl:[304,260,207,214,231,217,0.0807], boy:[2460,2105,2163,1925,2229,2415,0.0031] },
   seamus: { boy:[1195,1223,1319,1366,1457,1280,0.00838] },
   sean: { boy:[334,362,397,427,435,489,0.0335] },
   shae: { girl:[2049,1766,1990,1735,2172,2061,0.00525], boy:[5931,4604,4169,4197,4545,7120,0.000653] },
@@ -4888,9 +4995,12 @@ const SSA_POP = {
   sloane: { girl:[181,145,140,151,153,141,0.118] },
   sullivan: { girl:[2313,2284,2190,2226,1954,2432,0.00422], boy:[398,372,366,358,339,314,0.0589] },
   sunny: { girl:[691,642,553,406,370,390,0.0455] },
+  susanna: { girl:[1388,1438,1429,1291,1357,1181,0.0112] },
   sy: { boy:[11848,7041,9724,7669,7696,8166,0.000544] },
   syd: { boy:[null,null,null,null,13989,null,null] },
+  sydney: { girl:[241,249,272,307,288,348,0.0498] },
   sye: { boy:[null,null,null,null,8242,13654,0.000272] },
+  sylvia: { girl:[502,467,439,427,361,300,0.058] },
   taitum: { girl:[10996,7991,6958,6899,8381,6521,0.00103] },
   tatem: { girl:[17279,9486,17511,9543,12052,14759,0.000342], boy:[10476,8754,6440,5227,12191,5583,0.000925] },
   tatum: { girl:[344,279,274,227,205,189,0.0948], boy:[490,386,318,233,195,202,0.0944] },
@@ -4898,7 +5008,12 @@ const SSA_POP = {
   tesa: { girl:[null,13349,null,17387,17456,null,null] },
   tessa: { girl:[281,287,332,323,303,311,0.0558] },
   tessah: { girl:[null,15085,null,null,null,null,null] },
-  "test-test": { girl:[null,null,null,null,null,null,null] },
+  theodore: { boy:[23,10,10,7,4,4,0.726] },
+  tristan: { boy:[182,208,226,253,267,309,0.06] },
+  ty: { boy:[652,683,716,772,861,813,0.0166] },
+  victor: { boy:[200,209,214,217,214,211,0.0905] },
+  vivian: { girl:[101,101,104,87,77,72,0.192] },
+  vivienne: { girl:[261,315,306,233,184,172,0.102] },
   walker: { girl:[3335,1696,1430,1708,1769,1961,0.00565], boy:[206,130,78,85,82,78,0.229] },
   waylan: { boy:[2653,2970,2437,2342,2711,2599,0.00277] },
   waylen: { boy:[1526,1224,894,678,797,849,0.0157] },
@@ -4917,6 +5032,7 @@ const SSA_POP = {
   winn: { girl:[10212,null,15197,17474,17562,null,null], boy:[10550,4930,6799,6490,6173,9660,0.000435] },
   winnie: { girl:[771,693,592,611,548,475,0.0369] },
   winnifred: { girl:[3090,3248,2637,2788,2773,2540,0.00399] },
+  winona: { girl:[1421,1300,977,880,734,627,0.0266] },
   wren: { girl:[360,252,184,195,214,231,0.0759] },
   wrenn: { girl:[4254,3034,3467,3474,3816,3706,0.00234] },
   wyatt: { girl:[2153,2129,2402,2311,1201,1483,0.00827], boy:[29,29,38,47,38,38,0.352] },
@@ -4924,6 +5040,8 @@ const SSA_POP = {
   wyn: { girl:[14990,17538,null,null,null,10872,0.000513], boy:[null,7072,5431,8879,8279,5841,0.00087] },
   wynn: { girl:[2439,2184,2293,2312,1996,1709,0.00685], boy:[2207,2025,2148,1867,1919,1726,0.00517] },
   wynne: { girl:[4255,4407,3762,4990,4885,4456,0.00183], boy:[null,13982,null,null,null,null,null] },
+  zack: { boy:[1307,1272,1329,1293,1395,1435,0.00685] },
+  zayne: { boy:[394,376,413,433,447,473,0.035] },
 };
 // </ssa-pop>
 Object.keys(SSA_POP).forEach((id) => Object.keys(SSA_POP[id]).forEach((g) => {
@@ -4931,6 +5049,15 @@ Object.keys(SSA_POP).forEach((id) => Object.keys(SSA_POP[id]).forEach((g) => {
   row.slice(0, 6).forEach((r, i) => { if (ser[2020 + i] == null) ser[2020 + i] = r; });
   if (row[6] != null && !(PCT[id] && PCT[id][g] != null)) (PCT[id] || (PCT[id] = {}))[g] = row[6];
 }));
+// A respelled candidate shows the common spelling, so its popularity is that spelling's.
+Object.keys(RESPELL).forEach((id) => {
+  const src = SSA_POP[RESPELL[id].toLowerCase()] || {};
+  Object.keys(src).forEach((g) => {
+    const ser = {}; src[g].slice(0, 6).forEach((r, i) => { ser[2020 + i] = r; });
+    (POP[id] || (POP[id] = {}))[g] = ser;
+    if (src[g][6] != null) (PCT[id] || (PCT[id] = {}))[g] = src[g][6];
+  });
+});
 // Stamp nickname-potential (nk) onto every tagged name so the model can use it.
 const NICKS_N = {};
 [...NAMES.boy, ...NAMES.girl].forEach((n) => { NICKS_N[n.id] = (n.nicks || []).length; });
@@ -5240,7 +5367,7 @@ function suggestNames(data, profile, gender) {
   // 3. Score unseen candidates (skip roster/removed/dismissed, hide "pass both").
   const pool = [...(CAND[gender] || []), ...CAND.unisex];
   return pool
-    .filter((c) => FEAT[c.id] && !present.has(c.id) && !removed.has(c.id) && !dismissed[c.id])
+    .filter((c) => FEAT[c.id] && !present.has(c.id) && !present.has(slug(c.name)) && !removed.has(c.id) && !dismissed[c.id])
     .filter((c) => { const e = explore[c.id]; return !(e && e.s <= -3); })
     .map((c) => {
       const f = FEAT[c.id];
@@ -7934,10 +8061,10 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // feature, but the suggestions you can actually act on come first.
   const tuneCard = tune ? (
         <div style={{ display:"flex", gap:S.sm, alignItems:"stretch", minHeight:TUNE_ROW_H }}>
-          {/* One row — 👎 · name · 👍 — the height of the input beside it. Both thumbs
+          {/* One row — name · 👍 👎 — the height of the input beside it. Both thumbs
               start neutral (a filled 👍 read as the default answer); the one you tap
               fills in for a beat before the next name, like a picked vote card. */}
-          {[["down", "👎", "Thumbs down", C.clay], null, ["up", "👍", "Thumbs up", C.sage]].map((b) => b ? (
+          {[null, ["up", "👍", "Thumbs up", C.sage], ["down", "👎", "Thumbs down", C.clay]].map((b) => b ? (
             <button key={b[0]} onClick={() => thumb(b[0])} disabled={!!thumbed} className="lift" aria-label={`${b[2]}: ${tune.name}`}
               style={{ width:56, flexShrink:0, fontSize:T.name + 3, borderRadius:R.card, transition:"background .15s ease",
                 background: thumbed === b[0] ? b[3] : C.bg, border:`1px solid ${thumbed === b[0] ? b[3] : C.line}` }}>{b[1]}</button>

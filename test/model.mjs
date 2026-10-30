@@ -266,9 +266,18 @@ eq("cold start ranks exactly as it did before", run(`JSON.stringify({
   boy:  suggestNames(assemble({}), "claire", "boy").slice(0, 12).map(x => x.c.id),
 })`), JSON.stringify({
   // Carey moved up when the SSA refresh gave its girl row a real rank (#6729, was "rare").
-  girl: ["ellison","bellamy","carey","larkin","remy","romilly","emeri","avelyn","tegan","finley","cassidy","waverly"],
+  // Emeri left when Name ideas stopped offering rare spellings (Emery is in the pool).
+  girl: ["ellison","bellamy","carey","larkin","remy","romilly","avelyn","tegan","finley","cassidy","waverly","huntley"],
   boy:  ["ellison","cassidy","bellamy","carey","larkin","tiernan","grayden","treyton","rustin","jagger","dempsey","conley"],
 }));
+
+group("Name ideas use the common spelling");
+const pool = run(`JSON.stringify([...CAND.girl, ...CAND.boy, ...CAND.unisex].map(c => [c.id, c.name]))`);
+const byId = Object.fromEntries(JSON.parse(pool));
+eq("a rare spelling whose common one is in the pool sits out (Klara → Clara)", byId.klara, undefined);
+eq("one whose common spelling isn't is offered under it (Rider → Ryder)", byId.rider, "Ryder");
+eq("…with the common spelling's popularity", run(`latestRank("rider", "boy") === latestRank("ryder", "boy") || POP.rider.boy[2025] === SSA_POP.ryder.boy[5]`), true);
+eq("a different name with the same letters keeps its own (Dana ≠ Danna)", byId.dana, "Dana");
 
 group("a tune teaches the list(s) the name actually belongs to");
 

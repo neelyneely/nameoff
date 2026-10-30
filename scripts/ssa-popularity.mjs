@@ -2,6 +2,9 @@
  *
  *   node scripts/ssa-popularity.mjs        (then npm test && npm run build)
  *
+ * Also writes RESPELL: Name ideas candidates spelled an uncommon way (Klara, Rider)
+ * mapped to the common spelling (Clara, Ryder) — see spellKey below.
+ *
  * Covers every name on the voting roster (built-in + names added in the app, read
  * live from Supabase), each renamed spelling, and every spelling listed in
  * VARIANTS or a COMBINE nickname pill. Source: data/ssa/yob2020.txt … yob2025.txt
@@ -80,6 +83,41 @@ const want = run(`(() => {
   return out.map((w) => ({ ...w, self: VARIANTS[w.id] && VARIANTS[w.id][w.g] && VARIANTS[w.id][w.g].self }));
 })()`);
 
+// --- Name ideas: candidates spelled an uncommon way → the common spelling ---
+// A spelling key that only folds differences of LETTERS, not sound: y/i, -ie/-ey/-ee,
+// ph/f, ck/k, hard c/k, a silent h, doubled consonants, the silent e of -ette/-elle/
+// -anne, -ore/-or. Looser rules measured badly: a general silent-e rule turned Jake
+// into Jack and Carolyn into Caroline; folding double vowels made Keely Kelly.
+const spellKey = (n) => {
+  let s = n.toLowerCase().replace(/[^a-z]/g, "").replace(/ph/g, "f").replace(/ck/g, "k");
+  s = s.replace(/c(?=[aoulrt]|$)/g, "k").replace(/(?<=.)y/g, "i").replace(/(ie|ee|ey|i)$/, "i");
+  s = s.replace(/(?<=[aeiou])h$/, "").replace(/(?<=[aeiou])h(?=[^aeiou])/g, "");
+  s = s.replace(/(tt|ll|nn|ss)e$/, "$1").replace(/ore$/, "or").replace(/([^aeiou])\1+/g, "$1");
+  return s;
+};
+// Same letters-only key, different sound — hand-checked, keep their own spelling.
+const NOT_RESPELLED = new Set(["dana", "lennie", "davy", "lenna", "milla"]);
+const RECENT = YEARS.slice(-3);
+const recent = (n, g) => RECENT.reduce((t, y) => t + ((ssa[n] && ssa[n][g] && ssa[n][g][y]) ? ssa[n][g][y].count : 0), 0);
+const byKey = { girl: {}, boy: {} };
+for (const n in ssa) for (const g in ssa[n]) (byKey[g][spellKey(n)] ||= []).push(n);
+const respell = {};
+for (const c of run("CANDS.map((c) => ({ id: c.id, name: c.name, g: c.gender }))")) {
+  if (NOT_RESPELLED.has(c.id)) continue;
+  const gs = c.g === "u" ? ["girl", "boy"] : [c.g], me = norm(c.name);
+  const own = gs.reduce((t, g) => t + recent(me, g), 0);
+  if (own >= 1000) continue;                       // an established spelling in its own right
+  let best = null;
+  for (const g of gs) for (const n of byKey[g][spellKey(me)] || []) {
+    const k = recent(n, g);
+    if (n !== me && k >= Math.max(3 * own, 30) && (!best || k > best.k)) best = { n, k };
+  }
+  if (best) {
+    respell[c.id] = best.n.charAt(0).toUpperCase() + best.n.slice(1);
+    gs.forEach((g) => want.push({ id: best.n, g }));  // its SSA row backs the candidate's popularity
+  }
+}
+
 const out = {}, missing = [];
 for (const { id, g, roster, self } of want) {
   const src = norm(self || id.replace(/-\d+$/, ""));
@@ -101,10 +139,16 @@ const body = Object.keys(out).sort().map((id) => {
   const k = /^[a-z]+$/.test(id) ? id : JSON.stringify(id);
   return `  ${k}: { ${Object.entries(out[id]).map(([g, r]) => `${g}:${JSON.stringify(r)}`).join(", ")} },`;
 }).join("\n");
-const src = fs.readFileSync(APP, "utf8");
+let src = fs.readFileSync(APP, "utf8");
 const re = /(\/\/ <ssa-pop>[^\n]*\n)[\s\S]*?(\n\/\/ <\/ssa-pop>)/;
 if (!re.test(src)) throw new Error("no <ssa-pop> markers in " + APP);
-fs.writeFileSync(APP, src.replace(re, `$1const SSA_POP = {\n${body}\n};$2`));
-console.log(`SSA_POP: ${Object.keys(out).length} names written to ${APP}`);
+src = src.replace(re, `$1const SSA_POP = {\n${body}\n};$2`);
+const reR = /(\/\/ <respell>[^\n]*\n)[\s\S]*?(\n\/\/ <\/respell>)/;
+if (!reR.test(src)) throw new Error("no <respell> markers in " + APP);
+const rbody = Object.keys(respell).sort().map((id) => `${/^[a-z]+$/.test(id) ? id : JSON.stringify(id)}:${JSON.stringify(respell[id])}`);
+const lines = []; for (let i = 0; i < rbody.length; i += 8) lines.push("  " + rbody.slice(i, i + 8).join(", ") + ",");
+src = src.replace(reR, `$1const RESPELL = {\n${lines.join("\n")}\n};$2`);
+fs.writeFileSync(APP, src);
+console.log(`SSA_POP: ${Object.keys(out).length} names; RESPELL: ${Object.keys(respell).length} candidates — written to ${APP}`);
 if (missing.length) console.log(`VARIANTS spellings with no SSA data (drop them): ${missing.join(", ")}`);
 if (drift.length) console.log(`Curated POP rows off from SSA 2025:\n  ${drift.join("\n  ")}`);

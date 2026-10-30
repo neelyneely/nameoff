@@ -20,7 +20,7 @@ dist/index.html <- BUILD OUTPUT (generated; this is what deploys). Do not hand-e
 ## Build & deploy
 ```bash
 npm install            # first time only
-npm test               # 63 model checks (see test/model.mjs) — run before deploying
+npm test               # 67 model checks (see test/model.mjs) — run before deploying
 npm run build          # writes dist/index.html (fully self-contained, offline)
 npm run deploy         # builds, then deploys dist/ to Cloudflare Pages
 ```
@@ -93,6 +93,13 @@ command — or run `npm run build` as the build command.)
     ssa.gov blocks scripted downloads — to add a year, download names.zip from
     https://www.ssa.gov/oact/babynames/limits.html in a browser and drop the new
     yobYYYY.txt into data/ssa/ (then bump YEARS in the script).
+  - `RESPELL` — **generated** (between `// <respell>` markers) by the same script:
+    Name ideas candidates spelled an uncommon way → the common spelling. One whose
+    common spelling is already in the pool sits out (Klara, since Clara is there);
+    one whose isn't is offered under it (Rider → Ryder) with that spelling's
+    popularity. Its id, FEAT row and tune history don't change. The matching folds
+    letters only, never sound (`spellKey` in the script: a general silent-e rule
+    made Jake into Jack); `NOT_RESPELLED` lists same-letters/different-sound names.
   - `COMBINE` — links a name to nickname-popularity entries (shown as pills).
   - `VARIANTS` — spelling variants that should count as ONE name (merged by % → rank).
     Hand-curated: same sound, different letters (Alanna ← Alana, Alannah, Alanah,
