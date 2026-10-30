@@ -20,7 +20,7 @@ dist/index.html <- BUILD OUTPUT (generated; this is what deploys). Do not hand-e
 ## Build & deploy
 ```bash
 npm install            # first time only
-npm test               # 67 model checks (see test/model.mjs) — run before deploying
+npm test               # 70 model checks (see test/model.mjs) — run before deploying
 npm run build          # writes dist/index.html (fully self-contained, offline)
 npm run deploy         # builds, then deploys dist/ to Cloudflare Pages
 ```
@@ -76,8 +76,9 @@ command — or run `npm run build` as the build command.)
   (`GET …/rest/v1/nameoff_kv?select=key,value`). A history row is a snapshot of
   rounded ratings after each vote, so the matchup is the diff from the previous row
   (a name new to the snapshot starts at START). Rebuild ratings, matches, votes and
-  history by replaying the kept matchups from START, the way `deleteVote` does, and
-  check that a full replay reproduces the live ratings before writing anything.
+  history by replaying the kept matchups from START with `updateElo`, and check
+  that a full replay reproduces the live ratings before writing anything. (The app
+  had a Vote log for this; it was removed — git history has it, commit 869749d.)
 - **Data maps in app.jsx:**
   - `NAMES{boy,girl}`, `UNISEX` — the candidate names + nicknames.
   - `POP` — SSA national ranks by year (2020–2025). Ranks run past 1000 (Greer is

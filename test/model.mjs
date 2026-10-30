@@ -279,6 +279,21 @@ eq("one whose common spelling isn't is offered under it (Rider → Ryder)", byId
 eq("…with the common spelling's popularity", run(`latestRank("rider", "boy") === latestRank("ryder", "boy") || POP.rider.boy[2025] === SSA_POP.ryder.boy[5]`), true);
 eq("a different name with the same letters keeps its own (Dana ≠ Danna)", byId.dana, "Dana");
 
+group("one thumbs-down is enough");
+// Hide the top girl suggestion behind a given tune score, then see if it's still offered.
+const outAfter = (score) => run(`(() => {
+  const d = assemble({}); const id = suggestNames(d, "claire", "girl")[0].c.id;
+  d.girl.claire.explore = { [id]: { s: ${score}, n: 1 } };
+  return !suggestNames(d, "claire", "girl").some((x) => x.c.id === id);
+})()`);
+eq("a single 👎 (-1) takes a name out of the suggestions", outAfter(-1), true);
+eq("losing one old pairwise pick (-0.6) doesn't", outAfter(-0.6), false);
+eq("a skipped name isn't offered again this visit", run(`(() => {
+  const d = assemble({}); const sc = suggestNames(d, "claire", "girl");
+  const skipped = new Set(sc.map((x) => x.c.id)); const keep = sc[0].c.id; skipped.delete(keep);
+  return pickExploreName(d, "claire", "girl", sc, skipped).id === keep;
+})()`), true);
+
 group("a tune teaches the list(s) the name actually belongs to");
 
 // The tuner alternates boy/girl on its own, so routing every reaction into the

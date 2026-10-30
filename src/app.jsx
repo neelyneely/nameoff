@@ -5158,6 +5158,9 @@ const tuneGenders = (id, g) => [...new Set([g, ...likeGendersOf(id)])];
 // The tuner shows ONE name now (a pair read as a second Vote tab): up/down. A pair's
 // winner earned +1.0, so 👍 matches it and 👎 mirrors it.
 const EXPLORE_DELTAS = { up:[1.0], down:[-1.0] };
+// One 👎 takes a name out of the tuner and the suggestions for good (an old two-name
+// "hate both" at -1.5 counts too; losing a single old pairwise pick, -0.6, doesn't).
+const TUNED_OUT = -1;
 
 // Score the candidate pool for one voter + gender. Returns [{c, sc, f}] desc.
 /* ---- what one voter's model has learned ---------------------------------
@@ -5368,7 +5371,7 @@ function suggestNames(data, profile, gender) {
   const pool = [...(CAND[gender] || []), ...CAND.unisex];
   return pool
     .filter((c) => FEAT[c.id] && !present.has(c.id) && !present.has(slug(c.name)) && !removed.has(c.id) && !dismissed[c.id])
-    .filter((c) => { const e = explore[c.id]; return !(e && e.s <= -3); })
+    .filter((c) => { const e = explore[c.id]; return !(e && e.s <= TUNED_OUT); })
     .map((c) => {
       const f = FEAT[c.id];
       // Keep each feature's contribution as we go, so the row can show WHY
@@ -5388,10 +5391,10 @@ function suggestNames(data, profile, gender) {
 
 // Pick the next name to thumb up or down: one you haven't reacted to yet, chosen
 // at random among the least-seen so the tuner doesn't march down the list in order.
-function pickExploreName(data, profile, gender, scored) {
+function pickExploreName(data, profile, gender, scored, skipped = new Set()) {
   const explore = (data[gender][profile] || {}).explore || {};
   const seen = (id) => (explore[id] ? (explore[id].n || 0) : 0);
-  const list = scored.map((x) => x.c).filter((c) => !(explore[c.id] && explore[c.id].s <= -3));
+  const list = scored.map((x) => x.c).filter((c) => !(explore[c.id] && explore[c.id].s <= TUNED_OUT) && !skipped.has(c.id));
   if (!list.length) return null;
   const least = Math.min(...list.map((c) => seen(c.id)));
   const pool = list.filter((c) => seen(c.id) === least);
@@ -5643,50 +5646,6 @@ const trimHistory = (h) => {
   return a;
 };
 
-// Each history entry is a snapshot of (rounded) ratings after a vote. A single vote
-// nudges exactly two names by an equal amount: the winner up, the loser down. So we
-// can recover the matchup behind every vote by diffing consecutive snapshots (the
-// first one is diffed against the START baseline when history is complete). If the
-// log was trimmed (oldest snapshots dropped), the first kept row is a fixed baseline
-// with no recoverable matchup. Returns one event per history row, oldest-first.
-function reconstructPG(pg) {
-  const H = (pg && pg.history) || [];
-  const trimmed = !(H.length && H[0].m === 1);
-  const events = [];
-  for (let i = 0; i < H.length; i++) {
-    const cur = H[i].r || {};
-    let win = null, lose = null;
-    const prev = i === 0 ? (H[0].m === 1 ? "START" : null) : (H[i - 1].r || {});
-    if (prev) {
-      let wd = 0.5, ld = -0.5;
-      for (const id in cur) {
-        const base = prev === "START" ? START : (id in prev ? prev[id] : null);
-        if (base == null) continue;
-        const d = cur[id] - base;
-        if (d > wd) { wd = d; win = id; }
-        if (d < ld) { ld = d; lose = id; }
-      }
-    }
-    events.push({ m: H[i].m, t: H[i].t, win, lose, baseline: i === 0 && trimmed });
-  }
-  return { events, trimmed };
-}
-
-// Friendly "2 min ago" + an absolute stamp, relative to a passed-in now (ms).
-function fmtWhen(t, now) {
-  if (!t) return { rel: "unknown time", abs: "" };
-  const s = Math.max(0, (now - t) / 1000);
-  let rel;
-  if (s < 60) rel = "just now";
-  else if (s < 3600) rel = `${Math.floor(s / 60)} min ago`;
-  else if (s < 86400) rel = `${Math.floor(s / 3600)} hr ago`;
-  else if (s < 604800) { const n = Math.floor(s / 86400); rel = `${n} day${n > 1 ? "s" : ""} ago`; }
-  else { const n = Math.floor(s / 604800); rel = `${n} wk${n > 1 ? "s" : ""} ago`; }
-  let abs = "";
-  try { abs = new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch {}
-  return { rel, abs };
-}
-
 function emptyPG(gender, custom) {
   const ratings = {}, matches = {};
   namesFor(gender, custom).forEach((n) => { ratings[n.id] = START; matches[n.id] = 0; });
@@ -5853,7 +5812,6 @@ function App() {
   const showToast = (msg, onUndo) => setToast({ msg, onUndo });
   const [undo, setUndo] = useState([]); // in-session stack of reversible matchups (per profile)
   const [showAdd, setShowAdd] = useState(false);
-  const [showLog, setShowLog] = useState(false); // Vote log modal (review & delete past votes)
   const [showSync, setShowSync] = useState(false);
   const [popMode, setPopMode] = useState(() => localStorage.getItem("nameoff_popmode") || "rank");
   const changePopMode = (m) => { setPopMode(m); try { localStorage.setItem("nameoff_popmode", m); } catch {} };
@@ -5998,46 +5956,6 @@ function App() {
     pendingPairRef.current = entry.pair;
     if (entry.g !== voteGender) { setVoteGender(entry.g); }
     else { pendingPairRef.current = null; setPair(entry.pair); setPicked(null); }
-  };
-
-  // Remove one specific past vote (any person, any gender) from the Vote log: drop
-  // that matchup and replay the rest so ratings, matches, votes & history stay exact.
-  const deleteVote = (p, g, m) => {
-    const next = clone(dataRef.current);
-    const pg = next[g] && next[g][p];
-    if (!pg || !pg.history) return;
-    const rec = reconstructPG(pg);
-    const target = rec.events.find((e) => e.m === m);
-    if (!target || target.baseline) return;
-    const names = namesFor(g, next.custom);
-    const base = {}; names.forEach((n) => { base[n.id] = START; });
-    let r, cnt, arr = [], replay;
-    if (rec.trimmed) {
-      const b = pg.history[0];
-      r = { ...base, ...(b.r || {}) }; cnt = b.m; arr = [{ m: b.m, t: b.t, r: b.r }];
-      replay = rec.events.filter((e) => !e.baseline && e.m !== m);
-    } else {
-      r = { ...base }; cnt = 0;
-      replay = rec.events.filter((e) => e.m !== m);
-    }
-    for (const e of replay) {
-      if (e.win && e.lose) r = updateElo(r, e.win, e.lose);
-      cnt += 1;
-      const snap = {}; names.forEach((n) => { snap[n.id] = Math.round(r[n.id] ?? START); });
-      arr.push({ m: cnt, t: e.t, r: snap });
-    }
-    let matches;
-    if (!rec.trimmed) {
-      matches = {}; names.forEach((n) => { matches[n.id] = 0; });
-      for (const e of replay) { if (e.win) matches[e.win] = (matches[e.win] || 0) + 1; if (e.lose) matches[e.lose] = (matches[e.lose] || 0) + 1; }
-    } else {
-      matches = { ...pg.matches };
-      if (target.win) matches[target.win] = Math.max(0, (matches[target.win] || 0) - 1);
-      if (target.lose) matches[target.lose] = Math.max(0, (matches[target.lose] || 0) - 1);
-    }
-    pg.ratings = r; pg.matches = matches; pg.votes = cnt; pg.history = arr;
-    dataRef.current = next; setData(next);
-    save({ [kCore(g, p)]: coreOf(pg), [kHist(g, p)]: pg.history });
   };
 
   const vetoCurrent = (id) => {
@@ -6368,21 +6286,9 @@ function App() {
     setProfile(key);
   };
   const switchMe = () => { try { localStorage.removeItem("nameoff_me"); } catch {} setProfile(""); };
-  // Remove a guest profile (owners can't be removed); clears their data everywhere.
-  const deleteProfile = (key) => {
-    if (isOwner(key)) return;
-    const next = clone(dataRef.current);
-    next.roster = next.roster.filter((p) => p.key !== key);
-    next.profiles = { ...next.profiles }; delete next.profiles[key];
-    ["boy", "girl"].forEach((g) => { delete next[g][key]; });
-    dataRef.current = next; setData(next);
-    save({ profiles: next.roster, [kCore("boy", key)]: null, [kHist("boy", key)]: null, [kCore("girl", key)]: null, [kHist("girl", key)]: null });
-    if (profile === key) switchMe();
-  };
 
   if (!data) return <div className="boot" style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:T.body }}>Loading your names…</div>;
-  // No removing people from the sign-in screen: anyone can open it. Guests are
-  // removed from the Vote log, which only the two of you can reach.
+  // No removing people from the sign-in screen: anyone can open it.
   if (!known) return <WhoPanel roster={data.roster} onChoose={chooseMe} />;
 
   // Renaming a name or editing a shipped nickname changes the list for EVERYONE,
@@ -6395,11 +6301,10 @@ function App() {
     <ShowPopCtx.Provider value={profile === "claire"}>
     <Celebrate data={celebrate} onClose={() => setCelebrate(null)} />
     <Toast data={toast} onClose={() => setToast(null)} />
-    {showLog && isOwner(profile) && <VoteLog data={data} onDelete={deleteVote} onRemovePerson={deleteProfile} onClose={() => setShowLog(false)} />}
     <div className="wrap">
       <Header me={data.profiles[profile]} myColor={pColor(profile)} onSwitch={switchMe}
-        showAdd={showAdd} setShowAdd={setShowAdd} owner={isOwner(profile)} claire={profile === "claire"}
-        popMode={popMode} setPopMode={changePopMode} onOpenLog={() => { setShowAdd(false); setShowLog(true); }} />
+        showAdd={showAdd} setShowAdd={setShowAdd} claire={profile === "claire"}
+        popMode={popMode} setPopMode={changePopMode} />
       {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom} />}
       <Tabs view={view} setView={setView} />
 
@@ -6432,86 +6337,6 @@ function App() {
     </ShowPopCtx.Provider>
     </PopModeCtx.Provider>
     </EditCtx.Provider>
-  );
-}
-
-/* ----------------------------- vote log ---------------------------------- */
-// Every vote each person has cast, newest first, with the recovered matchup and a
-// timestamp — so a vote cast by mistake (e.g. while peeking at someone else's tab)
-// can be spotted and removed. Deleting recomputes that person's ratings cleanly.
-function VoteLog({ data, onDelete, onRemovePerson, onClose }) {
-  const [confirmGone, setConfirmGone] = useState(null);
-  const now = Date.now();
-  const roster = data.roster || [];
-  const nameOf = (g, id) => findName(namesFor(g, data.custom), id).name;
-  return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"24px 12px", overflowY:"auto", zIndex:60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width:"100%", maxWidth:560, background:C.bg, border:`1px solid ${C.line}`, borderRadius:18, padding:"20px 18px", margin:"auto" }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-          <span className="disp" style={{ fontSize:T.title, fontWeight:800 }}>Vote log</span>
-          <button onClick={onClose} className="lift" aria-label="Close" style={{ display:"flex", padding:4, color:C.muted }}><Ic n="x" s={18} /></button>
-        </div>
-        <p style={{ fontSize:T.meta, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
-          Every vote each person has cast, newest first. Spot one that was really you by mistake and tap <Ic n="x" s={11} c={C.clay} /> to remove just that vote — the rankings recompute automatically. Only the two of you can see this.
-        </p>
-        {roster.map((p) => {
-          const rows = [
-            ...reconstructPG(data.girl[p.key] || {}).events.map((e) => ({ ...e, g:"girl" })),
-            ...reconstructPG(data.boy[p.key] || {}).events.map((e) => ({ ...e, g:"boy" })),
-          ].filter((e) => e.t).sort((x, y) => y.t - x.t);
-          return (
-            <div key={p.key} style={{ marginBottom:18 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                <span style={{ width:10, height:10, borderRadius:999, background:pColor(p.key) }} />
-                <span style={{ fontSize:T.name, fontWeight:700, color:C.ink }}>{data.profiles[p.key] || p.name}</span>
-                <span style={{ fontSize:T.meta, color:C.muted }}>{rows.length} vote{rows.length === 1 ? "" : "s"}</span>
-                {!isOwner(p.key) && (confirmGone === p.key
-                  ? <span style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:S.xs, fontSize:T.meta }}>
-                      Remove {data.profiles[p.key] || p.name} and all their votes?
-                      <button onClick={() => { setConfirmGone(null); onRemovePerson(p.key); }} className="lift" style={{ padding:"4px 8px", borderRadius:R.card, fontWeight:700, background:C.clay, color:"#fff" }}>Remove</button>
-                      <button onClick={() => setConfirmGone(null)} className="lift" style={{ padding:"4px 8px", borderRadius:R.card, border:`1px solid ${C.line}` }}>Keep</button>
-                    </span>
-                  : <button onClick={() => setConfirmGone(p.key)} className="lift" title="Remove this voter and all their votes"
-                      style={{ marginLeft:"auto", fontSize:T.meta, fontWeight:600, padding:"2px 8px", borderRadius:R.card, color:C.clay, background:"transparent" }}>Remove</button>)}
-              </div>
-              {rows.length === 0 ? (
-                <div style={{ fontSize:T.meta, color:C.muted, fontStyle:"italic", padding:"2px 2px 4px" }}>No votes yet.</div>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                  {rows.map((e) => {
-                    const when = fmtWhen(e.t, now);
-                    const known = e.win && e.lose;
-                    return (
-                      <div key={e.g + e.m} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 11px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
-                        <span style={{ fontSize:T.micro, fontWeight:800, letterSpacing:"0.04em", textTransform:"uppercase", color:gColor(e.g), background:gTint(e.g), borderRadius:R.card, padding:"2px 7px", flexShrink:0 }}>{e.g === "boy" ? "Boy" : "Girl"}</span>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:T.body, color:C.ink }}>
-                            {known
-                              ? <><b className="disp">{nameOf(e.g, e.win)}</b> <span style={{ color:C.muted }}>over</span> {nameOf(e.g, e.lose)}</>
-                              : <span style={{ color:C.muted, fontStyle:"italic" }}>matchup unavailable</span>}
-                          </div>
-                          <div style={{ fontSize:T.micro, color:C.muted }}>{when.rel}{when.abs ? ` · ${when.abs}` : ""}</div>
-                        </div>
-                        {e.baseline ? (
-                          <span style={{ fontSize:T.micro, color:C.line, flexShrink:0 }} title="Oldest kept vote — can’t be removed on its own">—</span>
-                        ) : (
-                          <button
-                            onClick={() => { if (window.confirm(`Remove ${data.profiles[p.key] || p.name}’s vote${known ? ` (${nameOf(e.g, e.win)} over ${nameOf(e.g, e.lose)})` : ""}? Their rankings will recompute. This can’t be undone.`)) onDelete(p.key, e.g, e.m); }}
-                            className="lift" aria-label="Remove this vote" title="Remove this vote"
-                            style={{ flexShrink:0, display:"flex", padding:6, borderRadius:8, color:C.clay, border:`1px solid ${C.line}`, background:C.bg }}>
-                            <Ic n="x" s={13} c={C.clay} />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -6601,7 +6426,7 @@ function syncDot(sync) {
   if (sync.status === "saving" || sync.status === "syncing") return C.ochre;
   return C.sage;
 }
-function Header({ me, myColor, onSwitch, showAdd, setShowAdd, owner, claire, popMode, setPopMode, onOpenLog }) {
+function Header({ me, myColor, onSwitch, showAdd, setShowAdd, claire, popMode, setPopMode }) {
   const [menu, setMenu] = useState(false);
   const item = { display:"flex", alignItems:"center", gap:S.sm, width:"100%", padding:"10px 12px", borderRadius:R.card, fontSize:T.body, fontWeight:600, color:C.ink, background:"transparent", textAlign:"left" };
   return (
@@ -6629,11 +6454,6 @@ function Header({ me, myColor, onSwitch, showAdd, setShowAdd, owner, claire, pop
               <span style={{ fontSize:T.body, fontWeight:600, color:C.ink }}>Popularity as</span>
               <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
             </div>
-          )}
-          {owner && (
-            <button role="menuitem" onClick={() => { setMenu(false); onOpenLog(); }} className="lift" style={item}>
-              <Ic n="list" s={15} /> Vote log &amp; voters
-            </button>
           )}
           <button role="menuitem" onClick={() => { setMenu(false); onSwitch(); }} className="lift" style={item}>
             <Ic n="reset" s={15} /> Not {me}? Switch person
@@ -7871,7 +7691,7 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
  * Nothing in this box enters voting — that distinction is worth keeping clear. */
 // Height of one Tune-your-taste row (the input and the thumbs row share it).
 const TUNE_ROW_H = 48;
-function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
+function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, headerAction, children }) {
   const [val, setVal] = useState("");
   const [tagging, setTagging] = useState(null); // id whose vibe we're asking about
   const [showAdded, setShowAdded] = useState(false); // the list you've already given it
@@ -7972,6 +7792,7 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
             <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or a quick thumbs up or down, for a</span>
             {/* LABEL already uppercases, so the word stays readable in the source */}
             <span className="disp" style={{ ...LABEL, letterSpacing:"0.14em", color:gColor(tuneGender) }}>{tuneGender === "boy" ? "boy" : "girl"}</span>
+            {headerAction && <span style={{ marginLeft:"auto" }}>{headerAction}</span>}
           </div>
           {children}
         </div>
@@ -7998,6 +7819,9 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const [tuneDone, setTuneDone] = useState(0);
   const [lastTune, setLastTune] = useState(null); // the one tune you can take back
   const [thumbed, setThumbed] = useState(null);   // "up" | "down" while the tap shows
+  // Skipped this visit: neutral, so it teaches the model nothing and isn't saved —
+  // a skipped name can turn up again another day.
+  const [skipped, setSkipped] = useState(() => new Set());
   const thumb = (kind) => { if (thumbed) return; setThumbed(kind); setTimeout(() => { setThumbed(null); react(kind); }, 250); };
   const restoreRef = useRef(null);                // name to put back on an undo
   // Girls and boys side by side, 4 each. A unisex name can be suggested for
@@ -8014,12 +7838,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // (Re)pick a name whenever the gender changes or a reaction advances the round.
   useEffect(() => {
     if (restoreRef.current) { setTune(restoreRef.current); restoreRef.current = null; return; }
-    setTune(pickExploreName(data, profile, tuneG, suggestNames(data, profile, tuneG)));
+    setTune(pickExploreName(data, profile, tuneG, suggestNames(data, profile, tuneG), skipped));
   }, [tuneG, round, profile]); // eslint-disable-line
 
   const react = (kind) => {
     if (!tune) return;
-    onReact(tuneG, [tune.id], kind);
+    if (kind === "skip") setSkipped((cur) => new Set([...cur, tune.id]));
+    else onReact(tuneG, [tune.id], kind);
     setLastTune({ g: tuneG, ids: [tune.id], kind, tune, tuneG, tuneDone });
     const done = tuneDone + 1;
     if (done >= BLOCK) { setTuneG((cur) => (cur === "girl" ? "boy" : "girl")); setTuneDone(0); }
@@ -8029,7 +7854,8 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // Put the name back and unwind its effect on the model.
   const undoTune = () => {
     if (!lastTune) return;
-    onUndoReact(lastTune.g, lastTune.ids, lastTune.kind);
+    if (lastTune.kind === "skip") setSkipped((cur) => { const n = new Set(cur); n.delete(lastTune.tune.id); return n; });
+    else onUndoReact(lastTune.g, lastTune.ids, lastTune.kind);
     restoreRef.current = lastTune.tune;
     setTuneG(lastTune.tuneG); setTuneDone(lastTune.tuneDone);
     setLastTune(null);
@@ -8075,14 +7901,17 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
               </div>
             </div>
           ))}
-          {lastTune && (
-            <button onClick={undoTune} className="lift" title="Take back that last one" aria-label="Undo"
-              style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0, fontSize:T.micro, fontWeight:700, padding:"0 4px",
-                background:"none", color:C.muted }}>
-              <Ic n="back" s={12} c={C.muted} /> Undo
-            </button>
-          )}
+          {/* Neutral: on to the next name without teaching the model anything. */}
+          <button onClick={() => react("skip")} disabled={!!thumbed} className="lift" aria-label={`Skip ${tune.name}`} title="Not sure — show me another"
+            style={{ width:48, flexShrink:0, fontSize:T.meta, fontWeight:700, borderRadius:R.card, color:C.muted, background:"transparent", border:`1px dashed ${C.line}` }}>Skip</button>
         </div>
+  ) : null;
+  // Undo rides in the heading line, so the row keeps room for the name on a phone.
+  const undoButton = lastTune ? (
+    <button onClick={undoTune} className="lift" title="Take back that last one"
+      style={{ display:"flex", alignItems:"center", gap:4, fontSize:T.micro, fontWeight:700, background:"none", color:C.muted }}>
+      <Ic n="back" s={12} c={C.muted} /> Undo
+    </button>
   ) : null;
 
   return (
@@ -8092,7 +7921,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
         Names we think you’ll like based on how you vote. The more you vote, the closer they get to your taste.
       </p>
       <TuneBox likes={{ ...((data.boy[profile] || {}).likes || {}), ...((data.girl[profile] || {}).likes || {}) }}
-        tuneGender={tuneG} onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike}>{tuneCard}</TuneBox>
+        tuneGender={tuneG} onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike} headerAction={undoButton}>{tuneCard}</TuneBox>
 
 
       {/* Silent until there's actually something of yours behind the list —
