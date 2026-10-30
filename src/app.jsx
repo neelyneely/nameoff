@@ -5342,7 +5342,6 @@ const PopModeCtx = React.createContext("rank");
 // Popularity figures (ranks, %, tier tags, the trend chart, the spelling breakdown)
 // are Claire's to see. Everyone else gets the name's meaning and nothing numeric.
 const ShowPopCtx = React.createContext(true);
-const TIER_WORDS = new Set(["rare", "uncommon", "rising", "popular"]);
 // Name-editing handles, passed by context rather than threaded through the six
 // layers of list components that render a name. { onRename, onRenameNick, canEdit }.
 const EditCtx = React.createContext(null);
@@ -8020,11 +8019,11 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                     {f.lean === "u" && <span style={{ ...LABEL, color:C.teal }}>unisex</span>}
                   </div>
                   <div style={{ fontSize:T.meta, color:C.muted, margin:"2px 0 6px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
-                  {/* Why this name is here, in the model's own terms. Without it
-                      the screen just asserts it's personalised and you have no
-                      way to tell when it's wrong. */}
-                  {taught && (showPop ? item.why : item.why.filter((w) => !TIER_WORDS.has(w))).length > 0 && (
-                    <div style={{ ...LABEL, color:C.clay, margin:"0 0 6px" }}>{(showPop ? item.why : item.why.filter((w) => !TIER_WORDS.has(w))).join(" · ")}</div>
+                  {/* Why this name is here, in the model's own terms — Claire's check on
+                      whether the suggestions are working. To anyone else "surname-name ·
+                      ends in -r" read as jargon on top of the meaning they came for. */}
+                  {taught && showPop && item.why.length > 0 && (
+                    <div style={{ ...LABEL, color:C.clay, margin:"0 0 6px" }}>{item.why.join(" · ")}</div>
                   )}
                   <PopLine id={c.id} gender={g} compact noChart meaningShown />
                   <div style={{ marginTop:6 }}>
