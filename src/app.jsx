@@ -6420,9 +6420,6 @@ function WhoPanel({ roster, onChoose, onDelete }) {
           </div>
         )}
 
-        <p style={{ fontSize:T.meta, color:C.muted, marginTop:S.xl, lineHeight:1.5 }}>
-          You’ll vote on your own first. Once you’ve cast 10 votes, the Rankings tab unlocks.
-        </p>
       </div>
     </div>
   );
