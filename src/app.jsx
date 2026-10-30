@@ -50,7 +50,6 @@ const pColor = (p) => (p === "claire" ? C.claire : p === "andrew" ? C.andrew : g
 const gColor = (g) => (g === "boy" ? C.boy : C.girl);
 const gTint = (g) => (g === "boy" ? C.boyTint : C.girlTint);
 const gCard = (g) => (g === "boy" ? C.boyCard : C.girlCard);
-const gLabel = (g) => (g === "boy" ? "BOYS" : "GIRLS");
 // Strip the wrapping quotes from meaning strings (e.g. Cornish · 'joyful' -> joyful).
 const cleanMeaning = (s) => (s ? s.replace(/['']/g, "") : s);
 // Linear blend between two #rrggbb colors. t in [0,1].
@@ -5002,8 +5001,8 @@ const derivedFeat = (raw, gender, tags) => ({
   lean: gender === "boy" ? "b" : gender === "girl" ? "g" : "u",
 });
 // How hard a typed favourite pulls the model. In band with what's already there:
-// a name rated 1700 over 4+ matches is 2.5, a veto is -4, a doubled-up Tune
-// "love" is 3.0. A typed name is deliberate but unverified by any head-to-head.
+// a name rated 1700 over 4+ matches is 2.5, a veto is -4, three Tune 👍s are 3.0.
+// A typed name is deliberate but unverified by any head-to-head.
 const LIKE_W = 2.0;
 // ...and it counts as roughly two votes' worth of evidence when fading the
 // cold-start prior, so five typed names actually displace the generic seed taste.
@@ -5029,7 +5028,9 @@ const tuneGenders = (id, g) => [...new Set([g, ...likeGendersOf(id)])];
 
 // What one Tune-your-taste reaction does to the two names' tallies. Kept in one
 // place because the undo runs it backwards — two copies would drift apart.
-const EXPLORE_DELTAS = { a:[1.0, -0.6], b:[-0.6, 1.0], love:[1.5, 1.5], pass:[-1.5, -1.5] };
+// The tuner shows ONE name now (a pair read as a second Vote tab): up/down. A pair's
+// winner earned +1.0, so 👍 matches it and 👎 mirrors it.
+const EXPLORE_DELTAS = { up:[1.0], down:[-1.0] };
 
 // Score the candidate pool for one voter + gender. Returns [{c, sc, f}] desc.
 /* ---- what one voter's model has learned ---------------------------------
@@ -5258,18 +5259,16 @@ function suggestNames(data, profile, gender) {
     .sort((a, b) => b.sc - a.sc);
 }
 
-// Pick two candidates to compare next in a mash-up: favor names not yet reacted
-// to, and pick a second that DIFFERS on a feature axis so the answer is informative.
-function pickExplorePair(data, profile, gender, scored) {
+// Pick the next name to thumb up or down: one you haven't reacted to yet, chosen
+// at random among the least-seen so the tuner doesn't march down the list in order.
+function pickExploreName(data, profile, gender, scored) {
   const explore = (data[gender][profile] || {}).explore || {};
   const seen = (id) => (explore[id] ? (explore[id].n || 0) : 0);
   const list = scored.map((x) => x.c).filter((c) => !(explore[c.id] && explore[c.id].s <= -3));
-  if (list.length < 2) return null;
-  const ranked = [...list].sort((a, b) => (seen(a.id) - seen(b.id)) || (Math.random() - 0.5));
-  const a = ranked[0], fa = FEAT[a.id];
-  const differs = (c) => { const f = FEAT[c.id]; return f.o !== fa.o || f.end !== fa.end || f.s[0] !== fa.s[0]; };
-  const b = ranked.slice(1).find(differs) || ranked[1];
-  return [a, b];
+  if (!list.length) return null;
+  const least = Math.min(...list.map((c) => seen(c.id)));
+  const pool = list.filter((c) => seen(c.id) === least);
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 const pctOf = (id, gender) => (PCT[id] && PCT[id][gender] != null) ? PCT[id][gender] : null;
 const fmtPct = (p) => p == null ? null : (p < 0.01 ? "<0.01%" : p.toFixed(2) + "%");
@@ -5340,6 +5339,10 @@ function tierOf(rank) {
   return { label:"Uncommon", color:C.teal };
 }
 const PopModeCtx = React.createContext("rank");
+// Popularity figures (ranks, %, tier tags, the trend chart, the spelling breakdown)
+// are Claire's to see. Everyone else gets the name's meaning and nothing numeric.
+const ShowPopCtx = React.createContext(true);
+const TIER_WORDS = new Set(["rare", "uncommon", "rising", "popular"]);
 // Name-editing handles, passed by context rather than threaded through the six
 // layers of list components that render a name. { onRename, onRenameNick, canEdit }.
 const EditCtx = React.createContext(null);
@@ -6048,8 +6051,8 @@ function App() {
     showToast(`${oldNick} → ${v}`, () => editNicks(gender, id, v, oldNick));
   };
 
-  // Record a "For you" mash-up reaction. kind: "a"|"b" (pick winner), "love"
-  // (both up), "pass" (both down). Feeds the recommender; not the voting list.
+  // Record a Tune-your-taste reaction. kind: "up" | "down" on one name. Feeds the
+  // recommender; not the voting list.
   const reactExplore = (g, ids, kind) => applyExplore(g, ids, kind, 1);
   // Undo the last tune. Runs the same deltas backwards and drops the tally
   // entirely once its count returns to zero, so an undone tune leaves nothing
@@ -6072,7 +6075,7 @@ function App() {
         touched.add(tg);
       });
     };
-    adj(ids[0], d[0]); adj(ids[1], d[1]);
+    ids.forEach((id, i) => adj(id, d[i]));
     dataRef.current = next; setData(next);
     const updates = {};
     touched.forEach((tg) => { updates[kCore(tg, profile)] = coreOf(next[tg][profile]); });
@@ -6252,7 +6255,9 @@ function App() {
   };
 
   if (!data) return <div className="boot" style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:T.body }}>Loading your names…</div>;
-  if (!known) return <WhoPanel roster={data.roster} onChoose={chooseMe} onDelete={deleteProfile} />;
+  // No removing people from the sign-in screen: anyone can open it. Guests are
+  // removed from the Vote log, which only the two of you can reach.
+  if (!known) return <WhoPanel roster={data.roster} onChoose={chooseMe} />;
 
   // Renaming a name or editing a shipped nickname changes the list for EVERYONE,
   // so it stays with the two of you; guests can still add nicknames and suggest names.
@@ -6261,14 +6266,15 @@ function App() {
   return (
     <EditCtx.Provider value={editHandles}>
     <PopModeCtx.Provider value={popMode}>
+    <ShowPopCtx.Provider value={profile === "claire"}>
     <Celebrate data={celebrate} onClose={() => setCelebrate(null)} />
     <Toast data={toast} onClose={() => setToast(null)} />
-    {showLog && <VoteLog data={data} onDelete={deleteVote} onClose={() => setShowLog(false)} />}
+    {showLog && isOwner(profile) && <VoteLog data={data} onDelete={deleteVote} onRemovePerson={deleteProfile} onClose={() => setShowLog(false)} />}
     <div className="wrap">
       <Header me={data.profiles[profile]} myColor={pColor(profile)} onSwitch={switchMe}
-        showAdd={showAdd} setShowAdd={setShowAdd} />
-      {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom}
-        popMode={popMode} setPopMode={changePopMode} onOpenLog={() => { setShowAdd(false); setShowLog(true); }} />}
+        showAdd={showAdd} setShowAdd={setShowAdd} owner={isOwner(profile)} claire={profile === "claire"}
+        popMode={popMode} setPopMode={changePopMode} onOpenLog={() => { setShowAdd(false); setShowLog(true); }} />
+      {showAdd && <AddPanel custom={data.custom} onAdd={addName} onRemove={removeCustom} />}
       <Tabs view={view} setView={setView} />
 
       {view === "vote" && <Vote names={names} gender={voteGender} pair={pair} picked={picked} onVote={vote} onVeto={vetoCurrent}
@@ -6282,10 +6288,10 @@ function App() {
 
       {view === "vote" && (
         <div style={{ marginTop: 32, display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:T.meta, color:C.muted }}>
-          <span>Voting as <b style={{ color:pColor(profile) }}>{PROFILES[profile]}</b> · {voteGender === "boy" ? "boys" : "girls"}</span>
+          <span>Voting as <b style={{ color:pColor(profile) }}>{data.profiles[profile]}</b> · {voteGender === "boy" ? "boys" : "girls"}</span>
           {confirmReset ? (
             <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-              Reset {PROFILES[profile]}’s {voteGender === "boy" ? "boys" : "girls"}?
+              Reset {data.profiles[profile]}’s {voteGender === "boy" ? "boys" : "girls"}?
               <button onClick={doReset} style={{ padding:"4px 8px", borderRadius:6, fontWeight:600, background:C.clay, color:"#fff" }}>Yes</button>
               <button onClick={() => setConfirmReset(false)} style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${C.line}` }}>No</button>
             </span>
@@ -6297,6 +6303,7 @@ function App() {
         </div>
       )}
     </div>
+    </ShowPopCtx.Provider>
     </PopModeCtx.Provider>
     </EditCtx.Provider>
   );
@@ -6306,7 +6313,8 @@ function App() {
 // Every vote each person has cast, newest first, with the recovered matchup and a
 // timestamp — so a vote cast by mistake (e.g. while peeking at someone else's tab)
 // can be spotted and removed. Deleting recomputes that person's ratings cleanly.
-function VoteLog({ data, onDelete, onClose }) {
+function VoteLog({ data, onDelete, onRemovePerson, onClose }) {
+  const [confirmGone, setConfirmGone] = useState(null);
   const now = Date.now();
   const roster = data.roster || [];
   const nameOf = (g, id) => findName(namesFor(g, data.custom), id).name;
@@ -6318,7 +6326,7 @@ function VoteLog({ data, onDelete, onClose }) {
           <button onClick={onClose} className="lift" aria-label="Close" style={{ display:"flex", padding:4, color:C.muted }}><Ic n="x" s={18} /></button>
         </div>
         <p style={{ fontSize:T.meta, color:C.muted, margin:"0 0 16px", lineHeight:1.5 }}>
-          Every vote each person has cast, newest first. Spot one that was really you by mistake and tap <Ic n="x" s={11} c={C.clay} /> to remove just that vote — the rankings recompute automatically.
+          Every vote each person has cast, newest first. Spot one that was really you by mistake and tap <Ic n="x" s={11} c={C.clay} /> to remove just that vote — the rankings recompute automatically. Only the two of you can see this.
         </p>
         {roster.map((p) => {
           const rows = [
@@ -6331,6 +6339,14 @@ function VoteLog({ data, onDelete, onClose }) {
                 <span style={{ width:10, height:10, borderRadius:999, background:pColor(p.key) }} />
                 <span style={{ fontSize:T.name, fontWeight:700, color:C.ink }}>{data.profiles[p.key] || p.name}</span>
                 <span style={{ fontSize:T.meta, color:C.muted }}>{rows.length} vote{rows.length === 1 ? "" : "s"}</span>
+                {!isOwner(p.key) && (confirmGone === p.key
+                  ? <span style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:S.xs, fontSize:T.meta }}>
+                      Remove {data.profiles[p.key] || p.name} and all their votes?
+                      <button onClick={() => { setConfirmGone(null); onRemovePerson(p.key); }} className="lift" style={{ padding:"4px 8px", borderRadius:R.card, fontWeight:700, background:C.clay, color:"#fff" }}>Remove</button>
+                      <button onClick={() => setConfirmGone(null)} className="lift" style={{ padding:"4px 8px", borderRadius:R.card, border:`1px solid ${C.line}` }}>Keep</button>
+                    </span>
+                  : <button onClick={() => setConfirmGone(p.key)} className="lift" title="Remove this voter and all their votes"
+                      style={{ marginLeft:"auto", fontSize:T.meta, fontWeight:600, padding:"2px 8px", borderRadius:R.card, color:C.clay, background:"transparent" }}>Remove</button>)}
               </div>
               {rows.length === 0 ? (
                 <div style={{ fontSize:T.meta, color:C.muted, fontStyle:"italic", padding:"2px 2px 4px" }}>No votes yet.</div>
@@ -6459,9 +6475,11 @@ function syncDot(sync) {
   if (sync.status === "saving" || sync.status === "syncing") return C.ochre;
   return C.sage;
 }
-function Header({ me, myColor, onSwitch, showAdd, setShowAdd }) {
+function Header({ me, myColor, onSwitch, showAdd, setShowAdd, owner, claire, popMode, setPopMode, onOpenLog }) {
+  const [menu, setMenu] = useState(false);
+  const item = { display:"flex", alignItems:"center", gap:S.sm, width:"100%", padding:"10px 12px", borderRadius:R.card, fontSize:T.body, fontWeight:600, color:C.ink, background:"transparent", textAlign:"left" };
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:S.sm, flexWrap:"wrap", marginBottom:S.lg }}>
+    <div style={{ display:"flex", alignItems:"center", gap:S.sm, flexWrap:"wrap", marginBottom:S.lg, position:"relative" }}>
       <h1 className="disp" style={{ margin:0, marginRight:"auto", letterSpacing:"0.06em", fontSize:T.title, fontWeight:800, textTransform:"uppercase" }}>
         Name<span style={{ color:C.sage }}>·</span>Off
       </h1>
@@ -6470,15 +6488,36 @@ function Header({ me, myColor, onSwitch, showAdd, setShowAdd }) {
           ...(showAdd ? { background:C.sage, color:"#fff" } : { background:C.paper, color:C.sage, border:`1px solid ${C.line}` }) }}>
         <Ic n={showAdd ? "x" : "plus"} s={15} /> {showAdd ? "Close" : "Add name"}
       </button>
-      <button onClick={onSwitch} className="lift" title="Not you? Switch voter"
+      <button onClick={() => setMenu((o) => !o)} className="lift" aria-expanded={menu} aria-haspopup="menu" title="Settings & switch person"
         style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:R.pill, background:C.paper, border:`1px solid ${C.line}` }}>
         <span style={{ width:9, height:9, borderRadius:R.pill, background:myColor }} />
-        <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>{me}</span>
+        <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink, maxWidth:96, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{me}</span>
+        <span style={{ fontSize:T.micro, color:C.muted }}>{menu ? "▴" : "▾"}</span>
       </button>
+      {menu && <>
+        <div onClick={() => setMenu(false)} style={{ position:"fixed", inset:0, zIndex:40 }} />
+        <div role="menu" style={{ position:"absolute", top:"100%", right:0, marginTop:S.xs, zIndex:41, width:260, padding:S.xs, borderRadius:R.card,
+          background:C.paper, border:`1px solid ${C.line}`, boxShadow:"0 8px 24px rgba(0,0,0,0.12)" }}>
+          {claire && (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:S.sm, padding:"8px 12px" }}>
+              <span style={{ fontSize:T.body, fontWeight:600, color:C.ink }}>Popularity as</span>
+              <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
+            </div>
+          )}
+          {owner && (
+            <button role="menuitem" onClick={() => { setMenu(false); onOpenLog(); }} className="lift" style={item}>
+              <Ic n="list" s={15} /> Vote log &amp; voters
+            </button>
+          )}
+          <button role="menuitem" onClick={() => { setMenu(false); onSwitch(); }} className="lift" style={item}>
+            <Ic n="reset" s={15} /> Not {me}? Switch person
+          </button>
+        </div>
+      </>}
     </div>
   );
 }
-function AddPanel({ custom, onAdd, onRemove, popMode, setPopMode, onOpenLog }) {
+function AddPanel({ custom, onAdd, onRemove }) {
   const [name, setName] = useState("");
   const [nicks, setNicks] = useState("");
   const [g, setG] = useState("girl");
@@ -6495,15 +6534,6 @@ function AddPanel({ custom, onAdd, onRemove, popMode, setPopMode, onOpenLog }) {
         <button onClick={submit} className="lift" style={{ padding:"6px 16px", borderRadius:8, fontWeight:700, background:C.sage, color:"#fff" }}>Add</button>
       </div>
       <p style={{ fontSize:T.micro, marginTop:S.sm, color:C.muted }}>New names join voting right away and show “popularity &amp; meaning pending” until their SSA ranks and origin are filled in.</p>
-      <div style={{ display:"flex", alignItems:"center", gap:S.sm, flexWrap:"wrap", marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
-        <span style={{ ...LABEL, color:C.muted }}>Show popularity as</span>
-        <Seg items={[["rank","#"],["pct","%"]]} value={popMode} onChange={setPopMode} active={C.teal} />
-        <span style={{ flex:1 }} />
-        <button onClick={onOpenLog} className="lift" title="Review & undo past votes"
-          style={{ display:"flex", alignItems:"center", gap:S.xs, padding:"6px 12px", borderRadius:R.card, fontSize:T.meta, fontWeight:700, background:C.bg, color:C.muted, border:`1px solid ${C.line}` }}>
-          <Ic n="list" s={13} /> Vote log
-        </button>
-      </div>
     </div>
   );
 }
@@ -6659,7 +6689,21 @@ function fmtRank(rank, approx, compact) {
 }
 function PopLine({ id, gender, compact = false, noChart = false, meaningShown = false }) {
   const popMode = React.useContext(PopModeCtx);
+  const showPop = React.useContext(ShowPopCtx);
   const [open, setOpen] = React.useState(false);
+  if (!showPop) {
+    // Just the "i" and the meaning behind it, where the card has nowhere else to say it.
+    if (!compact || meaningShown || !MEANING[id]) return null;
+    return (
+      <div style={{ marginTop:2 }}>
+        <button onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} aria-label="What the name means" title="What the name means"
+          style={{ fontSize: 9, fontWeight: 700, width: 15, height: 15, lineHeight: "13px", textAlign: "center", borderRadius: 999, border: `1px solid ${C.line}`, background: open ? C.line : "transparent", color: C.muted, cursor: "pointer", padding: 0 }}>i</button>
+        {open && (
+          <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 5, padding: "7px 9px", borderRadius: 10, background: `${C.sage}12`, border: `1px solid ${C.line}`, fontSize: 10.5, color: C.ink, lineHeight: 1.5, fontStyle: "italic" }}>{MEANING[id]}</div>
+        )}
+      </div>
+    );
+  }
   const uni = UNISEX_IDS.has(id);
   const fp = funcPop(id, gender);
   if (!fp) return null;
@@ -6830,6 +6874,7 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
   const chosen = picked === n.id;
   const accent = gColor(gender);     // pink for girls, blue for boys (follows the matchup)
   const popMode = React.useContext(PopModeCtx);
+  const showPop = React.useContext(ShowPopCtx);
   const fp = funcPop(n.id, gender);
   const popNicks = (fp ? fp.nicks : []).filter((nk) => nk.rank != null || nk.pct != null);
   // Picking is a plain tap on the card — no swipe, so vertical scrolling stays normal.
@@ -6858,21 +6903,6 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
         opacity: dim ? 0.4 : 1, transform: chosen ? "translateY(-3px)" : "none", transition: "transform .22s ease, border-color .15s ease",
         cursor: picked ? "default" : "pointer",
       }}>
-      {armed
-        ? <button onClick={(e) => { e.stopPropagation(); setArmed(false); onVeto(); }} disabled={!!picked}
-            aria-label={`Confirm: ${vetoWord.toLowerCase()} ${n.name}`}
-            className="lift" style={{ position:"absolute", top:S.md, left:S.md, right:S.md, display:"flex", alignItems:"center", justifyContent:"center",
-              gap:S.xs, fontSize:T.micro, fontWeight:700, padding:"8px 10px", minHeight:36, borderRadius:R.pill, color:"#fff", background:C.clay }}>
-            <Ic n="ban" s={12} c="#fff" /> {guest ? "Tap again — removes it for good" : "Tap again — removes it for both of you"}
-          </button>
-        : <button onClick={(e) => { e.stopPropagation(); setArmed(true); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
-            title={guest
-              ? "Hard pass — takes this name off your list for good, and Claire and Andrew can see it. Just want a different pair? Pick either card."
-              : "Veto — takes it out for both of you. Takes two taps."}
-            className="lift" style={{ position:"absolute", top:S.md, right:S.md, display:"flex", alignItems:"center", justifyContent:"center", gap:S.xs,
-              fontSize:T.micro, fontWeight:700, padding:"0 12px", minHeight:36, borderRadius:R.pill, color:C.clay, background:"rgba(255,255,255,0.55)" }}>
-            <Ic n="ban" s={12} /> {vetoWord}
-          </button>}
       {/* Four rows, and only the name is loud. Meaning, the popularity chart, the
           nickname figures and the spelling breakdown all live behind the “i” on the
           popularity line — they're reference, not what you decide on. */}
@@ -6886,11 +6916,29 @@ function NameCard({ n, gender, onPick, onVeto, picked, dim, onAddNick, onRemoveN
       </div>
       <div style={{ marginTop:S.md, display:"flex", justifyContent:"center" }}>
         {fp ? <PopLine id={n.id} gender={gender} compact noChart />
-            : <span style={{ fontSize:T.meta, fontStyle:"italic", color:C.ink, opacity:0.55 }}>Popularity &amp; meaning pending</span>}
+            : showPop && <span style={{ fontSize:T.meta, fontStyle:"italic", color:C.ink, opacity:0.55 }}>Popularity &amp; meaning pending</span>}
       </div>
       {n.byName && !isOwner(n.by) && (
         <div style={{ marginTop:S.sm, fontSize:T.micro, fontWeight:600, color:C.ink, opacity:0.6 }}>suggested by {n.byName}</div>
       )}
+      {/* Bottom-right, inside the card's bottom padding (S.xl): below every row, so
+          it can't sit on a long name the way the old top-right button did on
+          Winifred, and it costs the card no height. */}
+      {armed
+        ? <button onClick={(e) => { e.stopPropagation(); setArmed(false); onVeto(); }} disabled={!!picked}
+            aria-label={`Confirm: ${vetoWord.toLowerCase()} ${n.name}`}
+            className="lift" style={{ position:"absolute", bottom:S.xs, left:S.md, right:S.md, display:"flex", alignItems:"center", justifyContent:"center",
+              gap:S.xs, fontSize:T.micro, fontWeight:700, padding:"0 10px", minHeight:28, borderRadius:R.pill, color:"#fff", background:C.clay }}>
+            <Ic n="ban" s={12} c="#fff" /> {guest ? "Tap again — removes it for good" : "Tap again — removes it for both of you"}
+          </button>
+        : <button onClick={(e) => { e.stopPropagation(); setArmed(true); }} disabled={!!picked} aria-label={`${vetoWord} ${n.name}`}
+            title={guest
+              ? "Hard pass — takes this name off your list for good, and Claire and Andrew can see it. Just want a different pair? Pick either card."
+              : "Veto — takes it out for both of you. Takes two taps."}
+            className="lift" style={{ position:"absolute", bottom:S.xs, right:S.sm, display:"flex", alignItems:"center", justifyContent:"center", gap:S.xs,
+              fontSize:T.micro, fontWeight:700, padding:"0 10px", minHeight:28, borderRadius:R.pill, color:C.clay, background:"rgba(255,255,255,0.55)" }}>
+            <Ic n="ban" s={12} /> {vetoWord}
+          </button>}
     </div>
   );
 }
@@ -6908,12 +6956,13 @@ function Vote({ names, gender, pair, picked, onVote, onVeto, onBack, canGoBack, 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [pair, picked, onVote]);
-  // The round label is a quiet centred word, not a pill on its own line — the two
-  // color fields below already say which round this is.
+  // The question sits ABOVE the cards, where people look first, and names the list
+  // in its own color — the girls/boys switch every couple of votes is otherwise silent.
   const banner = (
-    <div style={{ display:"flex", justifyContent:"center", marginBottom:S.sm }}>
-      <span className="disp" style={{ ...LABEL, letterSpacing:"0.16em", color: gColor(gender) }}>{gLabel(gender)}</span>
-    </div>
+    <p style={{ textAlign:"center", fontSize:T.body, fontWeight:700, color:C.ink, margin:`0 0 ${S.sm}px` }}>
+      Which <span style={{ color: gColor(gender) }}>{gender === "boy" ? "boy" : "girl"}</span> name do you like better?
+      <span style={{ fontWeight:400, color:C.muted }}> Tap it.</span>
+    </p>
   );
   if (!pair) return (
     <div className="voteWrap">
@@ -6941,7 +6990,6 @@ function Vote({ names, gender, pair, picked, onVote, onVeto, onBack, canGoBack, 
           <Ic n="back" s={14} c={canGoBack ? C.teal : C.line} /> Go back
         </button>
       </div>
-      <p style={{ textAlign:"center", fontSize:T.micro, color:C.muted, margin:"10px 0 0" }}>Tap a name to vote</p>
     </div>
   );
 }
@@ -6993,7 +7041,7 @@ function RankRow({ r, rank, n, showCombo, gender, max, min, profile, readOnly, o
             <NameText id={r.n.id} name={r.n.name} className="disp" style={{ fontSize:T.name, fontWeight:700, color:C.ink }} />
             {attr.kind === "guest" && <span style={{ fontSize:T.micro, textTransform:"uppercase", letterSpacing:"0.06em", color:C.sage }}>added by {attr.name}</span>}
             {attr.kind === "unknown" && <button onClick={() => onClaim(r.n.id)} className="lift" style={{ fontSize:T.micro, fontWeight:700, padding:"1px 8px", borderRadius:R.card, border:`1px solid ${C.line}`, color:C.teal }}>claim this contribution</button>}
-            {showCombo && r.c != null && (
+            {showCombo && r.c != null && isOwner(profile) && (
               <span style={{ fontSize:T.micro, fontWeight:600, padding:"1px 6px", borderRadius:R.card, background: r.split ? `${C.clay}1A` : C.line }}>
                 <span style={{ color:C.claire, fontWeight:700 }}>C#{r.c}</span>
                 <span style={{ color:C.muted }}> · </span>
@@ -7761,7 +7809,7 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
       {children && (
         <div style={{ marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
           <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:S.sm, flexWrap:"wrap" }}>
-            <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or pick the one you like better for a</span>
+            <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or give a quick thumbs up or down, for a</span>
             {/* LABEL already uppercases, so the word stays readable in the source */}
             <span className="disp" style={{ ...LABEL, letterSpacing:"0.14em", color:gColor(tuneGender) }}>{tuneGender === "boy" ? "boy" : "girl"}</span>
           </div>
@@ -7774,13 +7822,14 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
 
 /* ---------------------- "For you" suggestions ---------------------------- */
 function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore, onAddNick, onRemoveNick, onAddLike, onRemoveLike, onTagLike, onUndoReact }) {
+  const showPop = React.useContext(ShowPopCtx);
   const [g, setG] = useState(initialGender || "girl");
   const [lastAdded, setLastAdded] = useState(null);
   const [lastDismissed, setLastDismissed] = useState(null);
   const [reasonText, setReasonText] = useState("");
   const [showPassed, setShowPassed] = useState(false);
   const [round, setRound] = useState(0);
-  const [pair, setPair] = useState(null);
+  const [tune, setTune] = useState(null);       // the one name on the tuner
   // The tuner alternates genders on its own — two boys, two girls — the way the
   // Vote tab does, so it keeps teaching both models no matter which list you're
   // reading below. It does NOT follow the Girls/Boys toggle, which now only
@@ -7788,7 +7837,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const [tuneG, setTuneG] = useState(initialGender || "girl");
   const [tuneDone, setTuneDone] = useState(0);
   const [lastTune, setLastTune] = useState(null); // the one tune you can take back
-  const restoreRef = useRef(null);                // pair to put back on an undo
+  const restoreRef = useRef(null);                // name to put back on an undo
   const votes = data[g][profile] ? (data[g][profile].votes || 0) : 0;
   const explore = (data[g][profile] || {}).explore || {};
   const dismissed = (data[g][profile] || {}).dismissed || {};
@@ -7801,26 +7850,26 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // page — showing them would be the same claim that line is careful not to make.
   const taught = votes > 0 || tuned > 0 || likeCount > 0;
 
-  // (Re)pick a mash-up whenever the gender changes or a reaction advances the round.
+  // (Re)pick a name whenever the gender changes or a reaction advances the round.
   useEffect(() => {
-    if (restoreRef.current) { setPair(restoreRef.current); restoreRef.current = null; return; }
-    setPair(pickExplorePair(data, profile, tuneG, suggestNames(data, profile, tuneG)));
+    if (restoreRef.current) { setTune(restoreRef.current); restoreRef.current = null; return; }
+    setTune(pickExploreName(data, profile, tuneG, suggestNames(data, profile, tuneG)));
   }, [tuneG, round, profile]); // eslint-disable-line
 
   const react = (kind) => {
-    if (!pair) return;
-    onReact(tuneG, [pair[0].id, pair[1].id], kind);
-    setLastTune({ g: tuneG, ids: [pair[0].id, pair[1].id], kind, pair, tuneG, tuneDone });
+    if (!tune) return;
+    onReact(tuneG, [tune.id], kind);
+    setLastTune({ g: tuneG, ids: [tune.id], kind, tune, tuneG, tuneDone });
     const done = tuneDone + 1;
     if (done >= BLOCK) { setTuneG((cur) => (cur === "girl" ? "boy" : "girl")); setTuneDone(0); }
     else setTuneDone(done);
     setRound((r) => r + 1);
   };
-  // Put the pair back exactly as it was and unwind its effect on the model.
+  // Put the name back and unwind its effect on the model.
   const undoTune = () => {
     if (!lastTune) return;
     onUndoReact(lastTune.g, lastTune.ids, lastTune.kind);
-    restoreRef.current = lastTune.pair;
+    restoreRef.current = lastTune.tune;
     setTuneG(lastTune.tuneG); setTuneDone(lastTune.tuneDone);
     setLastTune(null);
     setRound((r) => r + 1);
@@ -7845,32 +7894,20 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // The taste-tuner used to sit permanently above the list, so the screen opened
   // with two competing ways to vote. It's now one card INSIDE the list — same
   // feature, but the suggestions you can actually act on come first.
-  const tuneCard = pair ? (
+  const tuneCard = tune ? (
         <div>
-          <div style={{ display:"flex", gap:10, alignItems:"stretch" }} className="cards">
-            {pair.map((c, i) => {
-              const f = FEAT[c.id];
-              return (
-                <div key={c.id} role="button" tabIndex={0} onClick={() => react(i === 0 ? "a" : "b")}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); react(i === 0 ? "a" : "b"); } }}
-                  className="lift"
-                  style={{ flex:1, minWidth:0, textAlign:"left", padding:"11px 12px", borderRadius:R.card, background:gCard(tuneG), border:"1px solid transparent", cursor:"pointer" }}>
-                  <div style={{ fontFamily:DISPLAY, fontSize:T.name, color:C.ink, lineHeight:1.1 }}>{c.name}</div>
-                  {SAY[c.id] && <div style={{ fontSize:T.micro, color:C.clay, marginTop:2, fontStyle:"italic" }}>“{SAY[c.id]}”</div>}
-                  <div style={{ fontSize:T.meta, color:C.ink, opacity:0.7, margin:"3px 0 0" }}>
-                    {cleanMeaning(MEANING[c.id]) || ""}{f.lean === "u" ? " · unisex" : ""}
-                  </div>
-                </div>
-              );
-            })}
+          <div style={{ padding:"14px 14px", borderRadius:R.card, background:gCard(tuneG), textAlign:"center" }}>
+            <div style={{ fontFamily:DISPLAY, fontSize:T.title, color:C.ink, lineHeight:1.1 }}>{tune.name}</div>
+            {SAY[tune.id] && <div style={{ fontSize:T.micro, color:C.clay, marginTop:2, fontStyle:"italic" }}>“{SAY[tune.id]}”</div>}
+            <div style={{ fontSize:T.meta, color:C.ink, opacity:0.7, margin:"3px 0 0" }}>
+              {cleanMeaning(MEANING[tune.id]) || ""}{FEAT[tune.id] && FEAT[tune.id].lean === "u" ? " · unisex" : ""}
+            </div>
           </div>
-          <div style={{ display:"flex", gap:8, marginTop:10, justifyContent:"center", flexWrap:"wrap" }}>
-            <button onClick={() => react("love")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:R.card, background:C.sage, color:"#fff" }}>
-              <Ic n="heart" s={13} c="#fff" fill="#fff" /> Love both
-            </button>
-            <button onClick={() => react("pass")} className="lift" style={{ display:"flex", alignItems:"center", gap:5, fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, color:C.clay }}>
-              <Ic n="ban" s={13} c={C.clay} /> Hate both
-            </button>
+          <div style={{ display:"flex", gap:8, marginTop:10, justifyContent:"center", alignItems:"center", flexWrap:"wrap" }}>
+            <button onClick={() => react("up")} className="lift" aria-label={`Thumbs up: ${tune.name}`}
+              style={{ flex:1, maxWidth:140, fontSize:T.title, padding:"6px 0", borderRadius:R.card, background:C.sage, color:"#fff" }}>👍</button>
+            <button onClick={() => react("down")} className="lift" aria-label={`Thumbs down: ${tune.name}`}
+              style={{ flex:1, maxWidth:140, fontSize:T.title, padding:"6px 0", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>👎</button>
             {lastTune && (
               <button onClick={undoTune} className="lift" title="Take back that last one"
                 style={{ display:"flex", alignItems:"center", gap:4, fontSize:T.micro, fontWeight:700, padding:"6px 10px",
@@ -7940,8 +7977,8 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                   {/* Why this name is here, in the model's own terms. Without it
                       the screen just asserts it's personalised and you have no
                       way to tell when it's wrong. */}
-                  {taught && item.why.length > 0 && (
-                    <div style={{ ...LABEL, color:C.clay, margin:"0 0 6px" }}>{item.why.join(" · ")}</div>
+                  {taught && (showPop ? item.why : item.why.filter((w) => !TIER_WORDS.has(w))).length > 0 && (
+                    <div style={{ ...LABEL, color:C.clay, margin:"0 0 6px" }}>{(showPop ? item.why : item.why.filter((w) => !TIER_WORDS.has(w))).join(" · ")}</div>
                   )}
                   <PopLine id={c.id} gender={g} compact noChart meaningShown />
                   <div style={{ marginTop:6 }}>
