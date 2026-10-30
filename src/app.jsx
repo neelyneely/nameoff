@@ -7768,10 +7768,13 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
       <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.xs}px 0 ${S.sm}px`, lineHeight:1.5 }}>
         Your answers here personalize your name ideas. To add a name for everyone to vote on, use <b>+ Add name</b> above.
       </p>
+      <div className="twocol">
+      <div style={{ flex:"1 1 0", minWidth:0 }}>
+      <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Add a name you already love</div>
       <div style={{ display:"flex", gap:S.sm }}>
         <input value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder="A name you love (only you see this)" aria-label="A name you love (only you see this)"
+          placeholder="Type a name (only you see this)" aria-label="A name you already love (only you see this)"
           style={{ flex:1, minWidth:0, padding:"8px 10px", borderRadius:R.card, background:C.bg,
             border:`1px solid ${C.line}`, color:C.ink, fontSize:T.body }} />
         <button onClick={submit} className="lift"
@@ -7826,8 +7829,9 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
           </div>
         </div>
       )}
+      </div>
       {children && (
-        <div style={{ marginTop:S.md, paddingTop:S.md, borderTop:`1px solid ${C.line}` }}>
+        <div style={{ flex:"1 1 0", minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:S.sm, flexWrap:"wrap" }}>
             <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or give a quick thumbs up or down, for a</span>
             {/* LABEL already uppercases, so the word stays readable in the source */}
@@ -7836,6 +7840,7 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
           {children}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -7866,7 +7871,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const passedIds = Object.keys(dismissed);
   const tuned = Object.keys(explore).length;
   const likeCount = Object.keys((data[g][profile] || {}).likes || {}).length;
-  const sugg = diversify(suggestNames(data, profile, g), g, 5).slice(0, 5);
+  const sugg = diversify(suggestNames(data, profile, g), g, 6).slice(0, 6);  // even, so the two-column grid has no gap
   // Same test the "personalized" line below uses. Before you've taught it
   // anything the reasons are just the app's generic seed taste repeated down the
   // page — showing them would be the same claim that line is careful not to make.
@@ -7950,13 +7955,8 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       <p style={{ fontSize:T.body, color:C.muted, margin:`${S.xs}px 0 ${S.lg}px`, lineHeight:1.5 }}>
         Names we think you’ll like based on how you vote. The more you vote, the closer they get to your taste.
       </p>
-      {/* Tuner and suggestions sit side by side on wider screens; .twocol stacks them on phones. */}
-      <div className="twocol">
-      <div style={{ flex:"1 1 0", minWidth:0 }}>
       <TuneBox likes={{ ...((data.boy[profile] || {}).likes || {}), ...((data.girl[profile] || {}).likes || {}) }}
         tuneGender={tuneG} onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike}>{tuneCard}</TuneBox>
-      </div>
-      <div style={{ flex:"1 1 0", minWidth:0 }}>
 
 
       <div style={{ display:"flex", gap:8, margin:"0 0 10px", alignItems:"center", flexWrap:"wrap" }}>
@@ -7995,7 +7995,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       {sugg.length === 0 ? (
         <p style={{ fontSize:T.body, color:C.muted }}>You’ve added all the close matches — keep voting and check back.</p>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+        <div className="addgrid" style={{ gap:10 }}>
           {sugg.map((item) => {
             const c = item.c, f = item.f;
             const nick = (c.nicks && c.nicks.length) ? c.nicks[0] : null;
@@ -8062,8 +8062,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
           )}
         </div>
       )}
-      </div>
-      </div>
     </div>
   );
 }
