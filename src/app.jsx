@@ -7107,18 +7107,20 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
   // couple vs one individual voter.
   const options = [{ key: "combined", name: "Our list" }, { key: "everyone", name: "Everyone" }, { key: "compare", name: "Compare" }, ...(isOwner(profile) ? [{ key: "mine", name: "My list" }] : [])];
   // Two-up head-to-head: pick any two rankings — the couple combined, or any
-  // individual who has voted — and see them side by side. Defaults to Claire vs Andrew.
+  // individual who has voted — and see them side by side. Defaults below.
   const voters = data.roster.filter((p) => (data.boy[p.key] && data.boy[p.key].votes > 0) || (data.girl[p.key] && data.girl[p.key].votes > 0));
   // Anyone can be compared with anyone: the two of you as a unit, the family as a
   // unit, or any individual voter.
   const anyGuestVoted = voters.some((p) => !isOwner(p.key));
   const sides = [
-    { key: "us", name: "Us" },
+    { key: "us", name: isOwner(profile) ? "Us" : "Claire & Andrew" },  // "Us" means nothing to a guest
     ...(anyGuestVoted ? [{ key: "fam", name: "Fam & friends" }] : []),
     ...voters.map((p) => ({ key: p.key, name: p.name })),
   ];
-  const [leftKey, setLeftKey] = useState("claire");
-  const [rightKey, setRightKey] = useState("andrew");
+  // A guest opens on themselves vs the two of you; you two open on each other
+  // (yourself vs an average that includes you says little).
+  const [leftKey, setLeftKey] = useState(isOwner(profile) ? "claire" : profile);
+  const [rightKey, setRightKey] = useState(isOwner(profile) ? "andrew" : "us");
   // "Everyone" averages every voter equally by default; toggle people off to see
   // what a subset of the family thinks.
   const [who, setWho] = useState(null);            // null = everyone
@@ -7322,6 +7324,8 @@ function sideMembers(data, gender, key) {
  * "leans more", never "prefers": this is a read of a few dozen votes, not a fact
  * about a person. */
 function TasteDiff({ gender, data, lk, rk, sideName, sideColor }) {
+  // Popularity tiers ("rising", "popular"…) are Claire's to see, like every other figure.
+  const showPop = React.useContext(ShowPopCtx);
   const L = taste(data, sideMembers(data, gender, lk), gender);
   const R = taste(data, sideMembers(data, gender, rk), gender);
   const keys = Object.keys(L).filter((k) => R[k] != null);
@@ -7332,7 +7336,7 @@ function TasteDiff({ gender, data, lk, rk, sideName, sideColor }) {
       </p>
     );
   }
-  const rows = keys.map((k) => ({ k, l: L[k], r: R[k] }));
+  const rows = keys.filter((k) => showPop || kindOf(k) !== "tier").map((k) => ({ k, l: L[k], r: R[k] }));
   const line = (label, color, list) => list.length === 0 ? null : (
     <div style={{ display:"flex", gap:6, alignItems:"baseline", marginTop:4 }}>
       <span style={{ ...LABEL, color, flexShrink:0 }}>{label}</span>
