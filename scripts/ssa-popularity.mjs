@@ -4,7 +4,8 @@
  *
  * Covers every name on the voting roster (built-in + names added in the app, read
  * live from Supabase), each renamed spelling, and every spelling listed in
- * VARIANTS. Source: data/ssa/yob2020.txt … yob2025.txt — the SSA "National data"
+ * VARIANTS or a COMBINE nickname pill. Source: data/ssa/yob2020.txt … yob2025.txt
+ * — the SSA "National data"
  * files (name,sex,count; every name with 5+ births). The copies here came from the
  * mirror at github.com/moisesvasquez/us-baby-names (data/raw), checked against
  * SSA's published ranks (Sloane #141, Calvin #132, Iris #61 in 2025). ssa.gov blocks scripted
@@ -73,6 +74,8 @@ const want = run(`(() => {
       if (spell[n.id]) out.push({ id: slug(spell[n.id]), g, roster: true });
     }
     for (const id in VARIANTS) if (VARIANTS[id][g]) VARIANTS[id][g].ids.forEach((v) => out.push({ id: v, g }));
+    // Nickname pills that add several spellings up (Mack/Mac, Allister/Alistair…).
+    for (const id in COMBINE) (COMBINE[id][g] || []).forEach((lk) => (lk.ids || [lk.id]).forEach((v) => out.push({ id: v, g })));
   }
   return out.map((w) => ({ ...w, self: VARIANTS[w.id] && VARIANTS[w.id][w.g] && VARIANTS[w.id][w.g].self }));
 })()`);
