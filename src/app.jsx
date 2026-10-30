@@ -6376,23 +6376,37 @@ function VoteLog({ data, onDelete, onClose }) {
 /* --------------------------- who's voting -------------------------------- */
 function WhoPanel({ roster, onChoose, onDelete }) {
   const [name, setName] = useState("");
+  const returning = roster.length > 0;
+  const heading = { margin:0, fontSize:T.title, fontWeight:800, color:C.ink, lineHeight:1.15 };
+  const sub = { fontSize:T.body, color:C.muted, margin:`${S.xs}px 0 ${S.md}px`, lineHeight:1.45 };
   return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div style={{ width:"100%", maxWidth:480, background:C.paper, border:`1px solid ${C.line}`, borderRadius:20, padding:"36px 30px" }}>
-        <h1 className="disp" style={{ margin:"0 0 6px", letterSpacing:"0.06em", fontSize:T.display, fontWeight:800, textTransform:"uppercase", textAlign:"center" }}>
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:S.lg }}>
+      <div style={{ width:"100%", maxWidth:480, background:C.paper, border:`1px solid ${C.line}`, borderRadius:R.card, padding:`${S.xl}px ${S.lg}px` }}>
+        <h1 className="disp" style={{ margin:`0 0 ${S.sm}px`, letterSpacing:"0.06em", fontSize:T.display, fontWeight:800, textTransform:"uppercase", textAlign:"center" }}>
           Name<span style={{ color:C.sage }}>·</span>Off
         </h1>
-        <p style={{ fontSize:T.name, textAlign:"center", color:C.muted, margin:"0 0 22px", lineHeight:1.45 }}>
-          {roster.length > 0 ? "Tap your name below, or type it if you’re new." : "What’s your first name? We’ll remember you on this device."}
+        <p style={{ fontSize:T.body, textAlign:"center", color:C.muted, margin:`0 0 ${S.xl}px`, lineHeight:1.45 }}>
+          Help Claire &amp; Andrew pick a baby name, two names at a time. First, tell us who you are.
         </p>
-        {roster.length > 0 && (
-          <div style={{ marginBottom:22 }}>
-            <div style={{ fontSize:T.meta, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:10 }}>Select your name</div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:10 }}>
+
+        {/* New visitors first — the input is the main action on this screen. */}
+        <h2 className="disp" style={heading}>{returning ? "New here?" : "What’s your first name?"}</h2>
+        <p style={sub}>Enter <b>your</b> first name to start voting. We’ll remember you on this device.</p>
+        <div style={{ display:"flex", gap:S.sm }}>
+          <input value={name} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onChoose(name)}
+            placeholder="Your first name" aria-label="Your first name" style={{ flex:1, minWidth:0, padding:"12px 14px", borderRadius:R.card, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:T.name }} />
+          <button onClick={() => onChoose(name)} className="lift" style={{ padding:"12px 20px", borderRadius:R.card, fontSize:T.name, fontWeight:700, background:C.sage, color:"#fff", whiteSpace:"nowrap" }}>Start voting</button>
+        </div>
+
+        {returning && (
+          <div style={{ marginTop:S.xl, paddingTop:S.lg, borderTop:`1px solid ${C.line}` }}>
+            <h2 className="disp" style={heading}>Been here before?</h2>
+            <p style={sub}>Tap your name to pick up where you left off. These are the people voting, not baby names.</p>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:S.sm }}>
               {roster.map((p) => (
-                <span key={p.key} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 12px 8px 16px", borderRadius:999, background:C.bg, border:`1px solid ${C.line}` }}>
-                  <button onClick={() => onChoose(p.name)} className="lift" style={{ display:"flex", alignItems:"center", gap:8, fontSize:T.name, fontWeight:700, color:C.ink }}>
-                    <span style={{ width:10, height:10, borderRadius:999, background:pColor(p.key) }} /> {p.name}
+                <span key={p.key} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 12px 8px 16px", borderRadius:R.pill, background:C.bg, border:`1px solid ${C.line}` }}>
+                  <button onClick={() => onChoose(p.name)} className="lift" style={{ display:"flex", alignItems:"center", gap:S.sm, fontSize:T.body, fontWeight:700, color:C.ink }}>
+                    <span style={{ width:10, height:10, borderRadius:R.pill, background:pColor(p.key) }} /> I’m {p.name}
                   </button>
                   {onDelete && !OWNERS.includes(p.key) && (
                     <button onClick={() => { if (window.confirm(`Remove ${p.name} and their votes? This can’t be undone.`)) onDelete(p.key); }}
@@ -6405,13 +6419,8 @@ function WhoPanel({ roster, onChoose, onDelete }) {
             </div>
           </div>
         )}
-        <div style={{ fontSize:T.meta, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em", color:C.muted, marginBottom:10 }}>{roster.length > 0 ? "New here? Add yourself" : "Your first name"}</div>
-        <div style={{ display:"flex", gap:10 }}>
-          <input value={name} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onChoose(name)}
-            placeholder="First name" style={{ flex:1, padding:"12px 14px", borderRadius:12, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, fontSize:T.name }} />
-          <button onClick={() => onChoose(name)} className="lift" style={{ padding:"12px 22px", borderRadius:12, fontSize:T.name, fontWeight:700, background:C.sage, color:"#fff" }}>Start</button>
-        </div>
-        <p style={{ fontSize:T.meta, color:C.muted, marginTop:22, lineHeight:1.5 }}>
+
+        <p style={{ fontSize:T.meta, color:C.muted, marginTop:S.xl, lineHeight:1.5 }}>
           You’ll vote on your own first. Once you’ve cast 10 votes, the Rankings tab unlocks.
         </p>
       </div>
