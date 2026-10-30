@@ -6865,7 +6865,7 @@ function NickEditor({ id, nicks, onAddNick, onRemoveNick, center, big, canRemove
       {editing === true
         ? field
         : <button onClick={(e) => { stop(e); setVal(""); setEditing(true); }} className="lift" title="Add a nickname (anyone can)"
-            style={{ fontSize:fs, fontWeight:700, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.sage, background:"transparent" }}>add nickname</button>}
+            style={{ fontSize:fs, fontWeight:700, padding: big ? "2px 10px" : "1px 8px", borderRadius:999, border:`1px dashed ${C.line}`, color:C.muted, background:"transparent" }}>add nickname</button>}
     </div>
   );
 }
@@ -6980,7 +6980,7 @@ function Vote({ names, gender, pair, picked, onVote, onVeto, onBack, canGoBack, 
   const banner = (
     <p style={{ textAlign:"center", fontSize:T.body, fontWeight:700, color:C.ink, margin:`0 0 ${S.sm}px` }}>
       Which <span style={{ color: gColor(gender) }}>{gender === "boy" ? "boy" : "girl"}</span> name do you like better?
-      <span style={{ fontWeight:400, color:C.muted }}> Tap it.</span>
+      <span style={{ fontWeight:400, color:C.muted }}> Pick one.</span>
     </p>
   );
   if (!pair) return (
