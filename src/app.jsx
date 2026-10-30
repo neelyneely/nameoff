@@ -6510,7 +6510,7 @@ function AddPanel({ custom, onAdd, onRemove, popMode, setPopMode, onOpenLog }) {
 
 /* -------------------------------- tabs ----------------------------------- */
 function Tabs({ view, setView }) {
-  const items = [["vote","Vote","heart"],["foryou","Name ideas","spark"],["rankings","Rankings","trophy"]];
+  const items = [["vote","Vote","heart"],["rankings","Rankings","trophy"],["foryou","Name ideas","spark"]];
   return (
     <div style={{ display:"flex", gap:4, marginBottom:20, padding:4, borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
       {items.map(([k, label, icon]) => (
@@ -7698,16 +7698,16 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
     <div style={{ borderRadius:R.card, padding:S.md, marginBottom:S.lg, background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ ...LABEL, color:C.ink }}>Tune your taste</div>
       <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.xs}px 0 ${S.sm}px`, lineHeight:1.5 }}>
-        These teach your name suggestions below. If you want to add a name to the voting pool for everyone, use the <b>+ Add name</b> button above.
+        Your answers here personalize your name ideas. To add a name for everyone to vote on, use <b>+ Add name</b> above.
       </p>
       <div style={{ display:"flex", gap:S.sm }}>
         <input value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder="Name one you already like…" aria-label="Name one you already like"
+          placeholder="A name you love (only you see this)" aria-label="A name you love (only you see this)"
           style={{ flex:1, minWidth:0, padding:"8px 10px", borderRadius:R.card, background:C.bg,
             border:`1px solid ${C.line}`, color:C.ink, fontSize:T.body }} />
         <button onClick={submit} className="lift"
-          style={{ padding:"8px 16px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:accent, color:"#fff" }}>Teach</button>
+          style={{ padding:"8px 16px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:accent, color:"#fff" }}>Save</button>
       </div>
       {ids.length > 0 && (
         <button onClick={() => setShowAdded((v) => !v)} className="lift" aria-expanded={showAdded}
@@ -7795,7 +7795,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const passedIds = Object.keys(dismissed);
   const tuned = Object.keys(explore).length;
   const likeCount = Object.keys((data[g][profile] || {}).likes || {}).length;
-  const sugg = diversify(suggestNames(data, profile, g), g, 12).slice(0, 12);
+  const sugg = diversify(suggestNames(data, profile, g), g, 5).slice(0, 5);
   // Same test the "personalized" line below uses. Before you've taught it
   // anything the reasons are just the app's generic seed taste repeated down the
   // page — showing them would be the same claim that line is careful not to make.
@@ -7884,8 +7884,17 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
 
   return (
     <div>
+      <h2 className="disp" style={{ margin:0, fontSize:T.title, fontWeight:800, color:C.ink }}>Name ideas</h2>
+      <p style={{ fontSize:T.body, color:C.muted, margin:`${S.xs}px 0 ${S.lg}px`, lineHeight:1.5 }}>
+        Names we think you’ll like based on how you vote. The more you vote, the closer they get to your taste.
+      </p>
+      {/* Tuner and suggestions sit side by side on wider screens; .twocol stacks them on phones. */}
+      <div className="twocol">
+      <div style={{ flex:"1 1 0", minWidth:0 }}>
       <TuneBox likes={{ ...((data.boy[profile] || {}).likes || {}), ...((data.girl[profile] || {}).likes || {}) }}
         tuneGender={tuneG} onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike}>{tuneCard}</TuneBox>
+      </div>
+      <div style={{ flex:"1 1 0", minWidth:0 }}>
 
 
       <div style={{ display:"flex", gap:8, margin:"0 0 10px", alignItems:"center", flexWrap:"wrap" }}>
@@ -7929,8 +7938,8 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
             const c = item.c, f = item.f;
             const nick = (c.nicks && c.nicks.length) ? c.nicks[0] : null;
             return (
-              <div key={c.id} style={{ display:"flex", alignItems:"center", gap:S.md, padding:"12px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>
-                <div style={{ flex:1, minWidth:0 }}>
+              <div key={c.id} style={{ display:"flex", flexDirection:"column", gap:S.md, padding:"12px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>
+                <div style={{ minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
                     <span style={{ fontFamily:DISPLAY, fontSize:T.name + 3, color:C.ink }}>{c.name}</span>
                     {SAY[c.id] && <span style={{ fontSize:T.micro, color:C.clay, fontStyle:"italic" }}>“{SAY[c.id]}”</span>}
@@ -7948,14 +7957,15 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                     <NickEditor id={c.id} nicks={mergeNicks({ id: c.id, nicks: c.nicks || [] }, g).nicks} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={g} />
                   </div>
                 </div>
-                <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"stretch", gap:6 }}>
+                {/* Keep or skip: two equal buttons, so neither reads as the default. */}
+                <div style={{ display:"flex", gap:S.sm }}>
                   <button onClick={() => add(item)} className="lift"
-                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"8px 14px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:gColor(g), color:"#fff" }}>
-                    <Ic n="plus" s={14} c="#fff" /> Add to voting pool
+                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, flex:1, padding:"8px 12px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:"transparent", border:`1px solid ${gColor(g)}`, color:gColor(g) }}>
+                    <Ic n="plus" s={14} c={gColor(g)} /> Add to the vote
                   </button>
                   <button onClick={() => dismiss(item)} className="lift"
-                    style={{ fontSize:T.micro, fontWeight:600, padding:"4px 10px", borderRadius:R.card, background:"transparent", color:C.muted }}>
-                    Hard pass
+                    style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, flex:1, padding:"8px 12px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:"transparent", border:`1px solid ${C.line}`, color:C.muted }}>
+                    <Ic n="ban" s={14} c={C.muted} /> Hard pass
                   </button>
                 </div>
               </div>
@@ -7990,6 +8000,8 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
           )}
         </div>
       )}
+      </div>
+      </div>
     </div>
   );
 }
