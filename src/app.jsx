@@ -7857,6 +7857,8 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const [tuneG, setTuneG] = useState(initialGender || "girl");
   const [tuneDone, setTuneDone] = useState(0);
   const [lastTune, setLastTune] = useState(null); // the one tune you can take back
+  const [thumbed, setThumbed] = useState(null);   // "up" | "down" while the tap shows
+  const thumb = (kind) => { if (thumbed) return; setThumbed(kind); setTimeout(() => { setThumbed(null); react(kind); }, 250); };
   const restoreRef = useRef(null);                // name to put back on an undo
   const votes = data[g][profile] ? (data[g][profile].votes || 0) : 0;
   const explore = (data[g][profile] || {}).explore || {};
@@ -7924,10 +7926,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
             </div>
           </div>
           <div style={{ display:"flex", gap:8, marginTop:10, justifyContent:"center", alignItems:"center", flexWrap:"wrap" }}>
-            <button onClick={() => react("up")} className="lift" aria-label={`Thumbs up: ${tune.name}`}
-              style={{ flex:1, maxWidth:140, fontSize:T.title, padding:"6px 0", borderRadius:R.card, background:C.sage, color:"#fff" }}>👍</button>
-            <button onClick={() => react("down")} className="lift" aria-label={`Thumbs down: ${tune.name}`}
-              style={{ flex:1, maxWidth:140, fontSize:T.title, padding:"6px 0", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>👎</button>
+            {/* Both start neutral — a filled 👍 read as the default answer. The one you
+                tap fills in for a beat before the next name, like a picked vote card. */}
+            {[["up", "👍", "Thumbs up", C.sage], ["down", "👎", "Thumbs down", C.clay]].map(([kind, icon, label, on]) => (
+              <button key={kind} onClick={() => thumb(kind)} disabled={!!thumbed} className="lift" aria-label={`${label}: ${tune.name}`}
+                style={{ flex:1, maxWidth:140, fontSize:T.title, padding:"6px 0", borderRadius:R.card, transition:"background .15s ease",
+                  background: thumbed === kind ? on : C.paper, border:`1px solid ${thumbed === kind ? on : C.line}` }}>{icon}</button>
+            ))}
             {lastTune && (
               <button onClick={undoTune} className="lift" title="Take back that last one"
                 style={{ display:"flex", alignItems:"center", gap:4, fontSize:T.micro, fontWeight:700, padding:"6px 10px",
