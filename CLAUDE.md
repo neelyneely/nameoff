@@ -12,13 +12,15 @@ src/head.html   <- the <head> + all CSS. Edit this for styling/layout.
 build.mjs       <- compiles app.jsx and inlines everything into dist/index.html
 package.json    <- scripts + deps
 supabase.sql    <- one-time backend setup (already run; here for reference)
+data/ssa/       <- SSA national baby-name files yob2020–2025.txt (name,sex,count)
+scripts/ssa-popularity.mjs <- regenerates the SSA_POP block in app.jsx from data/ssa
 dist/index.html <- BUILD OUTPUT (generated; this is what deploys). Do not hand-edit.
 ```
 
 ## Build & deploy
 ```bash
 npm install            # first time only
-npm test               # 33 model checks (see test/model.mjs) — run before deploying
+npm test               # 63 model checks (see test/model.mjs) — run before deploying
 npm run build          # writes dist/index.html (fully self-contained, offline)
 npm run deploy         # builds, then deploys dist/ to Cloudflare Pages
 ```
@@ -70,12 +72,35 @@ command — or run `npm run build` as the build command.)
   read what they can off the spelling and the person taps a vibe tag or two.
 - **Global (shared) state:** `removed[]` (names hidden for both), `notes{}` (shared;
   each person edits only their own note), `custom[]` (added names).
+- **Fixing data by hand** (moving or deleting votes): back up the whole table first
+  (`GET …/rest/v1/nameoff_kv?select=key,value`). A history row is a snapshot of
+  rounded ratings after each vote, so the matchup is the diff from the previous row
+  (a name new to the snapshot starts at START). Rebuild ratings, matches, votes and
+  history by replaying the kept matchups from START, the way `deleteVote` does, and
+  check that a full replay reproduces the live ratings before writing anything.
 - **Data maps in app.jsx:**
   - `NAMES{boy,girl}`, `UNISEX` — the candidate names + nicknames.
-  - `POP` — SSA national ranks by year (2020–2025; `null` = not in top 1000).
-  - `PCT` — 2025 % of births (used to interpolate ranks).
+  - `POP` — SSA national ranks by year (2020–2025). Ranks run past 1000 (Greer is
+    #1847); `null` = not in the SSA files at all (under 5 births that year). Older
+    hand-entered rows used `null` for "outside top 1000"; SSA_POP fills those years.
+  - `PCT` — 2025 % of births (used to interpolate ranks). On SSA's published scale
+    (÷ all births), which is ~0.92× count ÷ listed births — the script applies that.
+  - `SSA_POP` — **generated** (between `// <ssa-pop>` markers; don't hand-edit) by
+    `node scripts/ssa-popularity.mjs`: a row for every roster name, every name added
+    in the app (read live from Supabase), each renamed spelling and every VARIANTS
+    spelling. It only fills gaps in POP/PCT; curated values win. **Rerun it after
+    adding names in the app or editing VARIANTS**, then `npm test && npm run build`.
+    ssa.gov blocks scripted downloads — to add a year, download names.zip from
+    https://www.ssa.gov/oact/babynames/limits.html in a browser and drop the new
+    yobYYYY.txt into data/ssa/ (then bump YEARS in the script).
   - `COMBINE` — links a name to nickname-popularity entries (shown as pills).
   - `VARIANTS` — spelling variants that should count as ONE name (merged by % → rank).
+    Hand-curated: same sound, different letters (Alanna ← Alana, Alannah, Alanah,
+    Alona, Allana). Don't auto-generate it — sound-alike matching also pairs Sean/Dean
+    and Nora/Nova. Key by the DISPLAYED spelling's slug (alannah is shown as "Alanna",
+    so it's `VARIANTS.alanna`); `self` names the SSA spelling for an id that isn't one
+    (`lila-2` → "Lila"). `spellPop`/`spellRank`/`spellPct` read one spelling's own
+    figures so a renamed id's old spelling can be a variant without double counting.
   - `MEANING` — one-line origin/meaning per name.
   - `approxRank()` / `rankToPct()` — calibration between % of births and rank.
   - `tierOf()` — popularity tier labels/colors.

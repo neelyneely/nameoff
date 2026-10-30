@@ -265,7 +265,8 @@ eq("cold start ranks exactly as it did before", run(`JSON.stringify({
   girl: suggestNames(assemble({}), "claire", "girl").slice(0, 12).map(x => x.c.id),
   boy:  suggestNames(assemble({}), "claire", "boy").slice(0, 12).map(x => x.c.id),
 })`), JSON.stringify({
-  girl: ["ellison","bellamy","larkin","remy","romilly","emeri","avelyn","carey","tegan","finley","cassidy","waverly"],
+  // Carey moved up when the SSA refresh gave its girl row a real rank (#6729, was "rare").
+  girl: ["ellison","bellamy","carey","larkin","remy","romilly","emeri","avelyn","tegan","finley","cassidy","waverly"],
   boy:  ["ellison","cassidy","bellamy","carey","larkin","tiernan","grayden","treyton","rustin","jagger","dempsey","conley"],
 }));
 
@@ -303,7 +304,8 @@ console.log(`   [top suggestion reads: "${whys.sample.join(" · ")}"]`);
 eq("no suggestion is unexplained", whys.all, true);
 // tasteProfile's weights are ranking scores, negative for nearly everything and
 // meaningless to a person — the reason line is words or it is nothing.
-eq("a reason never leaks a weight", whys.flat.some(w => /\d/.test(w)), false);
+// ("2 syllables" is a word label that happens to hold a digit, not a weight.)
+eq("a reason never leaks a weight", whys.flat.some(w => /\d/.test(w.replace(/^\d syllables?$/, ""))), false);
 eq("reasons read as words, not feature keys", whys.flat.some(w => w.includes(":")), false);
 
 eq("a name carried by its own tuner tally says so plainly", run(`(()=>{
