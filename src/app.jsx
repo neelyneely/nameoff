@@ -7185,8 +7185,8 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
             <PickRow label="Up" sel={rk} onPick={setRightKey} other={lk} />
           </div>
           <p style={{ fontSize:T.meta, color:C.muted, margin:"0 0 12px" }}>
-            Every name you’ve both voted on, placed by <b style={{ color:sideColor(lk) }}>{sideName(lk)}</b>’s rank (further right = they love it) and <b style={{ color:sideColor(rk) }}>{sideName(rk)}</b>’s (higher = they love it).
-            The further a name sits from the diagonal, the more you disagree. <b style={{ color:C.sage }}>Green</b> means you agree.
+            Names you’ve both voted on. Top right = you both love it. <b style={{ color:C.sage }}>Green</b> = you agree;
+            a dot in <b style={{ color:sideColor(lk) }}>{sideName(lk)}</b>’s or <b style={{ color:sideColor(rk) }}>{sideName(rk)}</b>’s color means they like it more.
           </p>
           <div className="twocol">
             <CompareScatter gender="girl" title="Girls" data={data} lk={lk} rk={rk} sideName={sideName} sideColor={sideColor} />
