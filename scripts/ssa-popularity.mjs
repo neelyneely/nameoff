@@ -97,6 +97,36 @@ const spellKey = (n) => {
 };
 // Same letters-only key, different sound — hand-checked, keep their own spelling.
 const NOT_RESPELLED = new Set(["dana", "lennie", "davy", "lenna", "milla"]);
+// Same SOUND, a vowel or two apart — the letters-only key can't see these (Domenic
+// vs Dominic). Hand-checked one by one; a one-vowel rule pairs Juno/June and
+// Livia/Olivia, so never generate this. Left out on purpose: Esmee, Brendon,
+// Avelyn, Emme, Regan, Leyna, Stephon (said differently).
+const SAME_SOUND = {
+  domenic: "Dominic",
+  charlette: "Charlotte",
+  evalyn: "Evelyn",
+  eleonor: "Eleanor",
+  nolen: "Nolan",
+  westen: "Weston",
+  jonathon: "Jonathan",
+  carsen: "Carson",
+  austen: "Austin",
+  braden: "Brayden",
+  braeden: "Brayden",
+  caeden: "Caden",
+  maddux: "Maddox",
+  branden: "Brandon",
+  triston: "Tristan",
+  rachael: "Rachel",
+  jayne: "Jane",
+  wayde: "Wade",
+  welles: "Wells",
+  kelsea: "Kelsey",
+  abbey: "Abby",
+  jenelle: "Janelle",
+  caspar: "Casper",
+  iain: "Ian",
+};
 const RECENT = YEARS.slice(-3);
 const recent = (n, g) => RECENT.reduce((t, y) => t + ((ssa[n] && ssa[n][g] && ssa[n][g][y]) ? ssa[n][g][y].count : 0), 0);
 const byKey = { girl: {}, boy: {} };
@@ -107,8 +137,8 @@ for (const c of run("CANDS.map((c) => ({ id: c.id, name: c.name, g: c.gender }))
   const gs = c.g === "u" ? ["girl", "boy"] : [c.g], me = norm(c.name);
   const own = gs.reduce((t, g) => t + recent(me, g), 0);
   if (own >= 1000) continue;                       // an established spelling in its own right
-  let best = null;
-  for (const g of gs) for (const n of byKey[g][spellKey(me)] || []) {
+  let best = SAME_SOUND[c.id] ? { n: norm(SAME_SOUND[c.id]) } : null;
+  if (!best) for (const g of gs) for (const n of byKey[g][spellKey(me)] || []) {
     const k = recent(n, g);
     if (n !== me && k >= Math.max(3 * own, 30) && (!best || k > best.k)) best = { n, k };
   }
