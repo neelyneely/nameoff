@@ -7185,7 +7185,7 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
             <PickRow label="Up" sel={rk} onPick={setRightKey} other={lk} />
           </div>
           <p style={{ fontSize:T.meta, color:C.muted, margin:"0 0 12px" }}>
-            Every name placed by <b style={{ color:sideColor(lk) }}>{sideName(lk)}</b>’s rank (further right = they love it) and <b style={{ color:sideColor(rk) }}>{sideName(rk)}</b>’s (higher = they love it).
+            Every name you’ve both voted on, placed by <b style={{ color:sideColor(lk) }}>{sideName(lk)}</b>’s rank (further right = they love it) and <b style={{ color:sideColor(rk) }}>{sideName(rk)}</b>’s (higher = they love it).
             The further a name sits from the diagonal, the more you disagree. <b style={{ color:C.sage }}>Green</b> means you agree.
           </p>
           <div className="twocol">
@@ -7215,14 +7215,16 @@ function Rankings({ data, profile, onUnveto, onVeto, onClaim, onAddNick, onRemov
 // two-column side-by-side lists — same question, but you see the whole set at once
 // and distance from the diagonal IS the disagreement.
 // A side's ratings: one person's own, the two of you averaged, or the family
-// averaged. Only people who actually rated a name count toward a group average, so
-// a non-voter can't drag it toward the 1500 start rating.
+// averaged. Only people who actually voted on a name count toward a group average, so
+// a non-voter can't drag it toward the 1500 start rating. (Every name has a rating
+// from the start — it's matches that say someone has seen it.)
+const votedOn = (pg, id) => ((pg && pg.matches) || {})[id] > 0;
 function ratingsForSide(data, gender, key, names) {
   const pg = (k) => data[gender][k] || {};
   const avg = (keys) => {
     const out = {};
     names.forEach((n) => {
-      const rs = keys.filter((k) => pg(k).ratings && pg(k).ratings[n.id] != null);
+      const rs = keys.filter((k) => votedOn(pg(k), n.id) && pg(k).ratings[n.id] != null);
       out[n.id] = rs.length ? rs.reduce((t, k) => t + pg(k).ratings[n.id], 0) / rs.length : START;
     });
     return out;
@@ -7276,7 +7278,11 @@ function TasteDiff({ gender, data, lk, rk, sideName, sideColor }) {
 }
 function CompareScatter({ gender, title, data, lk, rk, sideName, sideColor }) {
   const vetoed = new Set([...data[gender].claire.vetoed, ...data[gender].andrew.vetoed]);
-  const names = namesFor(gender, data.custom, data.removed).filter((n) => !vetoed.has(n.id));
+  // Only names both sides have voted on. An unseen name still sits at the 1500 start
+  // rating, which would plot it mid-pack as if someone felt lukewarm about it.
+  const seen = (key, id) => sideMembers(data, gender, key).some((k) => votedOn(data[gender][k], id));
+  const names = namesFor(gender, data.custom, data.removed)
+    .filter((n) => !vetoed.has(n.id) && seen(lk, n.id) && seen(rk, n.id));
   const xr = ranksOf(ratingsForSide(data, gender, lk, names), names);
   const yr = ranksOf(ratingsForSide(data, gender, rk, names), names);
   return (
@@ -7615,7 +7621,7 @@ const trendEmpty = (msg) => (
 // further right = more loved on the x axis, higher = more loved on the y axis.
 function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = C.ink, midColor = C.sage, xLabel = `${xName} loves`, yLabel = `${yName} loves` }) {
   const pts = names.map((n) => ({ n, x: xr[n.id], y: yr[n.id] })).filter((p) => p.x != null && p.y != null);
-  if (pts.length < 2) return trendEmpty("Not enough names ranked yet.");
+  if (pts.length < 2) return trendEmpty("Not enough names you’ve both voted on yet.");
   const N = Math.max(names.length, 2);
   const S = 360, padL = 26, padR = 74, padT = 22, padB = 34;
   // Inset the points from the axes so the worst-ranked name doesn't land on a line.
