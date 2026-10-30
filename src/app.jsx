@@ -7858,7 +7858,6 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
 /* ---------------------- "For you" suggestions ---------------------------- */
 function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRestore, onAddNick, onRemoveNick, onAddLike, onRemoveLike, onTagLike, onUndoReact }) {
   const showPop = React.useContext(ShowPopCtx);
-  const [g, setG] = useState(initialGender || "girl");
   const [lastAdded, setLastAdded] = useState(null);
   const [lastDismissed, setLastDismissed] = useState(null);
   const [reasonText, setReasonText] = useState("");
@@ -7875,13 +7874,16 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const [thumbed, setThumbed] = useState(null);   // "up" | "down" while the tap shows
   const thumb = (kind) => { if (thumbed) return; setThumbed(kind); setTimeout(() => { setThumbed(null); react(kind); }, 250); };
   const restoreRef = useRef(null);                // name to put back on an undo
-  const votes = data[g][profile] ? (data[g][profile].votes || 0) : 0;
-  const explore = (data[g][profile] || {}).explore || {};
-  const dismissed = (data[g][profile] || {}).dismissed || {};
-  const passedIds = Object.keys(dismissed);
-  const tuned = Object.keys(explore).length;
-  const likeCount = Object.keys((data[g][profile] || {}).likes || {}).length;
-  const sugg = diversify(suggestNames(data, profile, g), g, 6).slice(0, 6);  // even, so the two-column grid has no gap
+  // Girls and boys side by side, 4 each. A unisex name can be suggested for
+  // both; it shows under girls only, so the same card never appears twice.
+  const pgOf = (g) => data[g][profile] || {};
+  const votes = (pgOf("girl").votes || 0) + (pgOf("boy").votes || 0);
+  const tuned = Object.keys(pgOf("girl").explore || {}).length + Object.keys(pgOf("boy").explore || {}).length;
+  const likeCount = Object.keys(pgOf("girl").likes || {}).length + Object.keys(pgOf("boy").likes || {}).length;
+  const passed = ["girl", "boy"].flatMap((g) => Object.keys(pgOf(g).dismissed || {}).map((id) => ({ g, id, r: (pgOf(g).dismissed[id] || {}).r })));
+  const girlSugg = diversify(suggestNames(data, profile, "girl"), "girl", 4).slice(0, 4);
+  const girlIds = new Set(girlSugg.map((it) => it.c.id));
+  const boySugg = diversify(suggestNames(data, profile, "boy").filter((it) => !girlIds.has(it.c.id)), "boy", 4).slice(0, 4);
   // Same test the "personalized" line below uses. Before you've taught it
   // anything the reasons are just the app's generic seed taste repeated down the
   // page — showing them would be the same claim that line is careful not to make.
@@ -7911,20 +7913,20 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
     setLastTune(null);
     setRound((r) => r + 1);
   };
-  const add = (item) => {
+  const add = (item, g) => {
     const c = item.c;
     const gender = item.f.lean === "u" ? "both" : g;
     onAdd(c.name, (c.nicks || []).join(", "), gender);
     setLastAdded({ name: c.name, gender }); setLastDismissed(null);
     setRound((r) => r + 1);
   };
-  const dismiss = (item) => {
+  const dismiss = (item, g) => {
     onDismiss(g, item.c.id);
-    setLastDismissed({ id: item.c.id, name: item.c.name }); setReasonText(""); setLastAdded(null);
+    setLastDismissed({ id: item.c.id, name: item.c.name, g }); setReasonText(""); setLastAdded(null);
     setRound((r) => r + 1);
   };
   const saveReason = () => {
-    if (lastDismissed) onDismiss(g, lastDismissed.id, reasonText.trim());
+    if (lastDismissed) onDismiss(lastDismissed.g, lastDismissed.id, reasonText.trim());
     setLastDismissed(null); setReasonText("");
   };
 
@@ -7971,9 +7973,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
         tuneGender={tuneG} onAdd={onAddLike} onRemove={onRemoveLike} onTag={onTagLike}>{tuneCard}</TuneBox>
 
 
-      <div style={{ display:"flex", gap:8, margin:"0 0 10px", alignItems:"center", flexWrap:"wrap" }}>
-        <Seg items={[["girl","Girls"],["boy","Boys"]]} value={g} onChange={(v) => { setG(v); setLastAdded(null); }} active={gColor} />
-      </div>
       {/* Silent until there's actually something of yours behind the list —
           claiming it's personalised before you've taught it anything is a lie. */}
       {(votes > 0 || tuned > 0 || likeCount > 0) && (
@@ -7983,7 +7982,7 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
       )}
 
       {lastAdded && (
-        <div style={{ marginBottom:14, padding:"10px 12px", borderRadius:10, background:gTint(g), border:`1px solid ${C.line}`, fontSize:T.body, color:C.ink }}>
+        <div style={{ marginBottom:14, padding:"10px 12px", borderRadius:10, background:lastAdded.gender === "boy" ? gTint("boy") : lastAdded.gender === "girl" ? gTint("girl") : C.paper, border:`1px solid ${C.line}`, fontSize:T.body, color:C.ink }}>
           Added <b style={{ fontFamily:DISPLAY }}>{lastAdded.name}</b> to {lastAdded.gender === "both" ? "both lists" : lastAdded.gender === "boy" ? "boys" : "girls"}. It’s in your Vote deck now.
         </div>
       )}
@@ -8004,15 +8003,19 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
         </div>
       )}
 
-      {sugg.length === 0 ? (
-        <p style={{ fontSize:T.body, color:C.muted }}>You’ve added all the close matches — keep voting and check back.</p>
-      ) : (
-        <div className="addgrid" style={{ gap:10 }}>
-          {sugg.map((item) => {
+      <div className="twocol">
+        {[["girl", "Girls", girlSugg], ["boy", "Boys", boySugg]].map(([g, label, list]) => (
+          <div key={g} style={{ flex:"1 1 0", minWidth:0 }}>
+            <div className="disp" style={{ ...LABEL, color:gColor(g), marginBottom:S.sm }}>{label}</div>
+            {list.length === 0 ? (
+              <p style={{ fontSize:T.body, color:C.muted, margin:0 }}>You’ve added all the close matches — keep voting and check back.</p>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {list.map((item) => {
             const c = item.c, f = item.f;
             const nick = (c.nicks && c.nicks.length) ? c.nicks[0] : null;
             return (
-              <div key={c.id} style={{ display:"flex", flexDirection:"column", gap:S.md, padding:"12px 14px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}` }}>
+              <div key={c.id} style={{ display:"flex", flexDirection:"column", gap:S.md, padding:"12px 14px", borderRadius:R.card, background:gTint(g), border:`1px solid ${C.line}` }}>
                 <div style={{ minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
                     <span style={{ fontFamily:DISPLAY, fontSize:T.name + 3, color:C.ink }}>{c.name}</span>
@@ -8033,35 +8036,38 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                 </div>
                 {/* Keep or skip: two equal buttons, so neither reads as the default. */}
                 <div style={{ display:"flex", gap:S.sm }}>
-                  <button onClick={() => add(item)} className="lift"
+                  <button onClick={() => add(item, g)} className="lift"
                     style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, flex:1, padding:"8px 12px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:"transparent", border:`1px solid ${gColor(g)}`, color:gColor(g) }}>
                     <Ic n="plus" s={14} c={gColor(g)} /> Add to the vote
                   </button>
-                  <button onClick={() => dismiss(item)} className="lift"
+                  <button onClick={() => dismiss(item, g)} className="lift"
                     style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, flex:1, padding:"8px 12px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:"transparent", border:`1px solid ${C.line}`, color:C.muted }}>
                     <Ic n="ban" s={14} c={C.muted} /> Hard pass
                   </button>
                 </div>
               </div>
             );
-          })}
-        </div>
-      )}
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
 
-      {passedIds.length > 0 && (
+      {passed.length > 0 && (
         <div style={{ marginTop:18 }}>
           <button onClick={() => setShowPassed((s) => !s)} className="lift"
             style={{ display:"flex", alignItems:"center", gap:6, fontSize:T.meta, fontWeight:600, color:C.muted }}>
-            <Ic n={showPassed ? "x" : "list"} s={13} /> Passed names ({passedIds.length})
+            <Ic n={showPassed ? "x" : "list"} s={13} /> Passed names ({passed.length})
           </button>
           {showPassed && (
             <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:10 }}>
-              {passedIds.map((id) => (
-                <div key={id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
+              {passed.map(({ g, id, r }) => (
+                <div key={g + id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
                   <div style={{ flex:1, minWidth:0 }}>
                     <span style={{ fontFamily:DISPLAY, fontSize:T.name, color:C.ink }}>{CAND_NAME[id] || id}</span>
-                    {dismissed[id] && dismissed[id].r
-                      ? <span style={{ fontSize:T.meta, color:C.muted, marginLeft:8 }}>“{dismissed[id].r}”</span>
+                    {r
+                      ? <span style={{ fontSize:T.meta, color:C.muted, marginLeft:8 }}>“{r}”</span>
                       : <span style={{ fontSize:T.micro, color:C.line, marginLeft:8, fontStyle:"italic" }}>no reason given</span>}
                   </div>
                   <button onClick={() => onRestore(g, id)} className="lift"
