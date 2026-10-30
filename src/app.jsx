@@ -8010,10 +8010,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const girlSugg = diversify(suggestNames(data, profile, "girl"), "girl", 4).slice(0, 4);
   const girlIds = new Set(girlSugg.map((it) => it.c.id));
   const boySugg = diversify(suggestNames(data, profile, "boy").filter((it) => !girlIds.has(it.c.id)), "boy", 4).slice(0, 4);
-  // Same test the "personalized" line below uses. Before you've taught it
-  // anything the reasons are just the app's generic seed taste repeated down the
-  // page — showing them would be the same claim that line is careful not to make.
-  const taught = votes > 0 || tuned > 0 || likeCount > 0;
 
   // (Re)pick a name whenever the gender changes or a reaction advances the round.
   useEffect(() => {
@@ -8149,12 +8145,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
                     {f.lean === "u" && <span style={{ ...LABEL, color:C.teal }}>unisex</span>}
                   </div>
                   <div style={{ fontSize:T.meta, color:C.muted, margin:"2px 0 6px" }}>{cleanMeaning(MEANING[c.id]) || ""}</div>
-                  {/* Why this name is here, in the model's own terms — Claire's check on
-                      whether the suggestions are working. To anyone else "surname-name ·
-                      ends in -r" read as jargon on top of the meaning they came for. */}
-                  {taught && showPop && item.why.length > 0 && (
-                    <div style={{ ...LABEL, color:C.clay, margin:"0 0 6px" }}>{item.why.join(" · ")}</div>
-                  )}
                   <PopLine id={c.id} gender={g} compact noChart meaningShown />
                   <div style={{ marginTop:6 }}>
                     <NickEditor id={c.id} nicks={mergeNicks({ id: c.id, nicks: c.nicks || [] }, g).nicks} onAddNick={onAddNick} onRemoveNick={onRemoveNick} canRemove={isOwner(profile)} gender={g} />
