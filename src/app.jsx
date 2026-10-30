@@ -7743,6 +7743,8 @@ function ScatterCompare({ names, xr, yr, xName, yName, xColor = C.ink, yColor = 
  * the spelling (see endOf/sylOf) plus whatever vibe tags you pick, which is the
  * heaviest feature in the model and the one thing we can't infer.
  * Nothing in this box enters voting — that distinction is worth keeping clear. */
+// Height of one Tune-your-taste row (the input and the thumbs row share it).
+const TUNE_ROW_H = 48;
 function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
   const [val, setVal] = useState("");
   const [tagging, setTagging] = useState(null); // id whose vibe we're asking about
@@ -7774,8 +7776,18 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
       </p>
       <div className="twocol">
       <div style={{ flex:"1 1 0", minWidth:0 }}>
-      <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Any names you love?</div>
-      <div style={{ display:"flex", gap:S.sm }}>
+      {/* Heading + one row, the same shape as the thumbs half beside it, so the two
+          halves end level. "N added" rides in the heading rather than adding a row. */}
+      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", gap:S.sm, marginBottom:S.sm }}>
+        <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Any names you love?</span>
+        {ids.length > 0 && (
+          <button onClick={() => setShowAdded((v) => !v)} className="lift" aria-expanded={showAdded}
+            style={{ fontSize:T.micro, fontWeight:700, color:C.muted, background:"none" }}>
+            {ids.length} added {showAdded ? "▾" : "▸"}
+          </button>
+        )}
+      </div>
+      <div style={{ display:"flex", gap:S.sm, minHeight:TUNE_ROW_H }}>
         <input value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
           placeholder="Type one in" aria-label="Any names you love?"
@@ -7784,12 +7796,6 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
         <button onClick={submit} className="lift"
           style={{ padding:"8px 16px", borderRadius:R.card, fontWeight:700, fontSize:T.body, background:accent, color:"#fff" }}>Save</button>
       </div>
-      {ids.length > 0 && (
-        <button onClick={() => setShowAdded((v) => !v)} className="lift" aria-expanded={showAdded}
-          style={{ marginTop:S.sm, fontSize:T.micro, fontWeight:700, color:C.muted, background:"none" }}>
-          {ids.length} added {showAdded ? "▾" : "▸"}
-        </button>
-      )}
       {ids.length > 0 && showAdded && (
         <div style={{ display:"flex", flexWrap:"wrap", gap:S.xs, marginTop:S.sm }}>
           {ids.map((id) => {
@@ -7837,7 +7843,7 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
       {children && (
         <div style={{ flex:"1 1 0", minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:S.sm, flexWrap:"wrap" }}>
-            <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or give a quick thumbs up or down, for a</span>
+            <span style={{ fontSize:T.meta, fontWeight:700, color:C.ink }}>Or a quick thumbs up or down, for a</span>
             {/* LABEL already uppercases, so the word stays readable in the source */}
             <span className="disp" style={{ ...LABEL, letterSpacing:"0.14em", color:gColor(tuneGender) }}>{tuneGender === "boy" ? "boy" : "girl"}</span>
           </div>
@@ -7926,30 +7932,32 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   // with two competing ways to vote. It's now one card INSIDE the list — same
   // feature, but the suggestions you can actually act on come first.
   const tuneCard = tune ? (
-        <div>
-          <div style={{ padding:"14px 14px", borderRadius:R.card, background:gCard(tuneG), textAlign:"center" }}>
-            <div style={{ fontFamily:DISPLAY, fontSize:T.title, color:C.ink, lineHeight:1.1 }}>{tune.name}</div>
-            {SAY[tune.id] && <div style={{ fontSize:T.micro, color:C.clay, marginTop:2, fontStyle:"italic" }}>“{SAY[tune.id]}”</div>}
-            <div style={{ fontSize:T.meta, color:C.ink, opacity:0.7, margin:"3px 0 0" }}>
-              {cleanMeaning(MEANING[tune.id]) || ""}{FEAT[tune.id] && FEAT[tune.id].lean === "u" ? " · unisex" : ""}
+        <div style={{ display:"flex", gap:S.sm, alignItems:"stretch", minHeight:TUNE_ROW_H }}>
+          {/* One row — 👎 · name · 👍 — the height of the input beside it. Both thumbs
+              start neutral (a filled 👍 read as the default answer); the one you tap
+              fills in for a beat before the next name, like a picked vote card. */}
+          {[["down", "👎", "Thumbs down", C.clay], null, ["up", "👍", "Thumbs up", C.sage]].map((b) => b ? (
+            <button key={b[0]} onClick={() => thumb(b[0])} disabled={!!thumbed} className="lift" aria-label={`${b[2]}: ${tune.name}`}
+              style={{ width:56, flexShrink:0, fontSize:T.name + 3, borderRadius:R.card, transition:"background .15s ease",
+                background: thumbed === b[0] ? b[3] : C.bg, border:`1px solid ${thumbed === b[0] ? b[3] : C.line}` }}>{b[1]}</button>
+          ) : (
+            <div key="name" style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", justifyContent:"center", padding:"4px 10px",
+              borderRadius:R.card, background:gCard(tuneG), textAlign:"center" }}>
+              <div style={{ fontFamily:DISPLAY, fontSize:T.name, color:C.ink, lineHeight:1.15 }}>
+                {tune.name}{SAY[tune.id] && <span style={{ fontSize:T.micro, color:C.clay, fontStyle:"italic" }}> “{SAY[tune.id]}”</span>}
+              </div>
+              <div style={{ fontSize:T.micro, color:C.ink, opacity:0.7, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                {cleanMeaning(MEANING[tune.id]) || ""}{FEAT[tune.id] && FEAT[tune.id].lean === "u" ? " · unisex" : ""}
+              </div>
             </div>
-          </div>
-          <div style={{ display:"flex", gap:8, marginTop:10, justifyContent:"center", alignItems:"center", flexWrap:"wrap" }}>
-            {/* Both start neutral — a filled 👍 read as the default answer. The one you
-                tap fills in for a beat before the next name, like a picked vote card. */}
-            {[["up", "👍", "Thumbs up", C.sage], ["down", "👎", "Thumbs down", C.clay]].map(([kind, icon, label, on]) => (
-              <button key={kind} onClick={() => thumb(kind)} disabled={!!thumbed} className="lift" aria-label={`${label}: ${tune.name}`}
-                style={{ flex:1, maxWidth:140, fontSize:T.title, padding:"6px 0", borderRadius:R.card, transition:"background .15s ease",
-                  background: thumbed === kind ? on : C.paper, border:`1px solid ${thumbed === kind ? on : C.line}` }}>{icon}</button>
-            ))}
-            {lastTune && (
-              <button onClick={undoTune} className="lift" title="Take back that last one"
-                style={{ display:"flex", alignItems:"center", gap:4, fontSize:T.micro, fontWeight:700, padding:"6px 10px",
-                  borderRadius:R.card, background:"none", color:C.muted }}>
-                <Ic n="back" s={12} c={C.muted} /> Undo
-              </button>
-            )}
-          </div>
+          ))}
+          {lastTune && (
+            <button onClick={undoTune} className="lift" title="Take back that last one" aria-label="Undo"
+              style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0, fontSize:T.micro, fontWeight:700, padding:"0 4px",
+                background:"none", color:C.muted }}>
+              <Ic n="back" s={12} c={C.muted} /> Undo
+            </button>
+          )}
         </div>
   ) : null;
 
