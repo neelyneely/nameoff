@@ -7770,15 +7770,15 @@ function TuneBox({ likes, tuneGender, onAdd, onRemove, onTag, children }) {
     <div style={{ borderRadius:R.card, padding:S.md, marginBottom:S.lg, background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ ...LABEL, color:C.ink }}>Tune your taste</div>
       <p style={{ fontSize:T.micro, color:C.muted, margin:`${S.xs}px 0 ${S.sm}px`, lineHeight:1.5 }}>
-        Your answers here personalize your name ideas. To add a name for everyone to vote on, use <b>+ Add name</b> above.
+        Tell us what you like and we’ll tailor your name ideas. Only you see this.
       </p>
       <div className="twocol">
       <div style={{ flex:"1 1 0", minWidth:0 }}>
-      <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Add a name you already love</div>
+      <div style={{ fontSize:T.meta, fontWeight:700, color:C.ink, marginBottom:S.sm }}>Any names you love?</div>
       <div style={{ display:"flex", gap:S.sm }}>
         <input value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder="Type a name (only you see this)" aria-label="A name you already love (only you see this)"
+          placeholder="Type one in" aria-label="Any names you love?"
           style={{ flex:1, minWidth:0, padding:"8px 10px", borderRadius:R.card, background:C.bg,
             border:`1px solid ${C.line}`, color:C.ink, fontSize:T.body }} />
         <button onClick={submit} className="lift"
