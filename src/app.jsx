@@ -7830,7 +7830,6 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   const showPop = React.useContext(ShowPopCtx);
   const [lastAdded, setLastAdded] = useState(null);
   const [lastDismissed, setLastDismissed] = useState(null);
-  const [reasonText, setReasonText] = useState("");
   const [showPassed, setShowPassed] = useState(false);
   const [round, setRound] = useState(0);
   const [tune, setTune] = useState(null);       // the one name on the tuner
@@ -7893,12 +7892,8 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
   };
   const dismiss = (item, g) => {
     onDismiss(g, item.c.id);
-    setLastDismissed({ id: item.c.id, name: item.c.name, g }); setReasonText(""); setLastAdded(null);
+    setLastDismissed({ id: item.c.id, name: item.c.name, g }); setLastAdded(null);
     setRound((r) => r + 1);
-  };
-  const saveReason = () => {
-    if (lastDismissed) onDismiss(lastDismissed.g, lastDismissed.id, reasonText.trim());
-    setLastDismissed(null); setReasonText("");
   };
 
   // The taste-tuner used to sit permanently above the list, so the screen opened
@@ -7961,19 +7956,13 @@ function ForYou({ data, profile, initialGender, onAdd, onReact, onDismiss, onRes
         </div>
       )}
 
+      {/* Just a confirmation with a way back. It used to ask why, promising the
+          answer would "help us suggest better" — nothing ever read it. */}
       {lastDismissed && (
-        <div style={{ marginBottom:14, padding:"11px 13px", borderRadius:10, background:C.paper, border:`1px solid ${C.line}` }}>
-          <div style={{ fontSize:T.body, color:C.ink, marginBottom:7 }}>
-            Hid <b style={{ fontFamily:DISPLAY }}>{lastDismissed.name}</b> — you won’t see it again. <span style={{ color:C.muted }}>Mind sharing why? Totally optional, and it helps us suggest better.</span>
-          </div>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            <input value={reasonText} onChange={(e) => setReasonText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") saveReason(); }}
-              placeholder="e.g. reminds me of someone, too popular, hard to spell…"
-              style={{ flex:1, minWidth:180, fontSize:T.body, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.line}`, background:C.bg, color:C.ink }} />
-            <button onClick={saveReason} className="lift" style={{ fontSize:T.meta, fontWeight:700, padding:"7px 14px", borderRadius:8, background:C.teal, color:"#fff" }}>Save</button>
-            <button onClick={() => setLastDismissed(null)} className="lift" style={{ fontSize:T.meta, fontWeight:600, padding:"7px 12px", borderRadius:8, background:C.paper, border:`1px solid ${C.line}`, color:C.muted }}>No thanks</button>
-          </div>
+        <div style={{ display:"flex", alignItems:"center", gap:S.sm, flexWrap:"wrap", marginBottom:14, padding:"9px 13px", borderRadius:R.card, background:C.paper, border:`1px solid ${C.line}`, fontSize:T.body, color:C.ink }}>
+          <span style={{ flex:1, minWidth:0 }}>Hid <b style={{ fontFamily:DISPLAY }}>{lastDismissed.name}</b> — you won’t see it again.</span>
+          <button onClick={() => { onRestore(lastDismissed.g, lastDismissed.id); setLastDismissed(null); }} className="lift"
+            style={{ fontSize:T.meta, fontWeight:600, padding:"5px 11px", borderRadius:R.card, background:C.bg, border:`1px solid ${C.line}`, color:C.ink }}>Bring back</button>
         </div>
       )}
 
